@@ -149,9 +149,10 @@ pub struct FlickCfg {
     pub deadzone: Deadzone,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum MoveMode {
     /// The game reads the left stick itself.
+    #[default]
     Hybrid,
     Wasd,
 }
@@ -185,6 +186,14 @@ pub struct Layer {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct LightbarCfg {
+    pub enabled: bool,
+    pub idle: [u8; 3],
+    /// Colour while the next press of this paired button gives its second weapon.
+    pub pairs: Vec<(Btn, [u8; 3])>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Profile {
     pub game: String,
     pub exe: Option<String>,
@@ -195,6 +204,8 @@ pub struct Profile {
     pub timing: Timing,
     /// L2/R2 count as pressed above this analog position (JSM TRIGGER_THRESHOLD: 0 = any pull).
     pub trigger_threshold: f32,
+    /// Light bar shows which paired button gives its second weapon next.
+    pub lightbar: LightbarCfg,
     /// Hide the controller from games with HidHide while running (keyboard/mouse-only games).
     pub hide_controller: bool,
     pub buttons: HashMap<Btn, Binding>,
@@ -241,6 +252,8 @@ struct Raw {
     triggers: RawTriggers,
     #[serde(default)]
     controller: RawController,
+    #[serde(default)]
+    lightbar: RawLightbar,
     #[serde(default)]
     weapons: Option<RawWeapons>,
     #[serde(default)]
@@ -362,6 +375,32 @@ struct RawTriggers {
 struct RawController {
     hide: bool,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct RawLightbar {
+    enabled: bool,
+    idle: String,
+    square: String,
+    cross: String,
+    circle: String,
+    triangle: String,
+}
+
+impl Default for RawLightbar {
+    fn default() -> Self {
+        // PlayStation button colours, as in the JSM preset.
+        Self {
+            enabled: true,
+            idle: "303030".into(),
+            square: "FF3CA0".into(),
+            cross: "3C64FF".into(),
+            circle: "FF2828".into(),
+            triangle: "28FF8C".into(),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawWeapons {
@@ -636,10 +675,30 @@ fn compile(mut raw: Raw, fallback_name: &str) -> Result<Profile, ProfileError> {
         },
         timing: Timing { hold_ms: raw.timing.hold_ms, double_ms: raw.timing.double_ms, tap_ms: raw.timing.tap_ms },
         trigger_threshold: raw.triggers.threshold.clamp(0.0, 0.99),
+        lightbar: LightbarCfg {
+            enabled: raw.lightbar.enabled,
+            idle: color(&raw.lightbar.idle, "lightbar.idle")?,
+            pairs: vec![
+                (Btn::Square, color(&raw.lightbar.square, "lightbar.square")?),
+                (Btn::Cross, color(&raw.lightbar.cross, "lightbar.cross")?),
+                (Btn::Circle, color(&raw.lightbar.circle, "lightbar.circle")?),
+                (Btn::Triangle, color(&raw.lightbar.triangle, "lightbar.triangle")?),
+            ],
+        },
         hide_controller: raw.controller.hide,
         buttons,
         layers,
     })
+}
+
+/// "RRGGBB" (an optional leading # is allowed).
+fn color(hex: &str, ctx: &str) -> Result<[u8; 3], ProfileError> {
+    let h = hex.trim().trim_start_matches('#');
+    let n = (h.len() == 6).then(|| u32::from_str_radix(h, 16).ok()).flatten();
+    match n {
+        Some(n) => Ok([(n >> 16) as u8, (n >> 8) as u8, n as u8]),
+        None => err(format!("{ctx}: colour must be RRGGBB, got \"{hex}\"")),
+    }
 }
 
 fn deadzone(inner: f32, outer: f32, ctx: &str) -> Result<Deadzone, ProfileError> {

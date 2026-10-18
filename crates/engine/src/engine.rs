@@ -5,7 +5,7 @@ use dualsense::{Buttons as PadButtons, State};
 use crate::buttons::Buttons;
 use crate::flick::{apply_deadzone, Flick};
 use crate::gyro::{CalibrationResult, Gyro, TRIM_S};
-use crate::keys::Output;
+use crate::keys::{Action, Output};
 use crate::output::{Held, Sink};
 use crate::profile::{Btn, MoveMode, Profile};
 
@@ -46,8 +46,29 @@ pub struct Snapshot {
     pub flick_active: bool,
     /// Paired button (in the weapon layer) whose second slot the next press gives.
     pub next_pair: Option<Btn>,
+    pub movement: MoveMode,
 }
 
+
+/// Passes keys on and catches engine commands, which never reach the system.
+struct ActionTap<'a> {
+    inner: &'a mut dyn Sink,
+    actions: Vec<Action>,
+}
+
+impl Sink for ActionTap<'_> {
+    fn key(&mut self, out: Output, down: bool) {
+        match out {
+            Output::Action(a) if down => self.actions.push(a),
+            Output::Action(_) => {}
+            _ => self.inner.key(out, down),
+        }
+    }
+
+    fn mouse_move(&mut self, dx: i32, dy: i32) {
+        self.inner.mouse_move(dx, dy);
+    }
+}
 pub struct Engine {
     pub profile: Profile,
     buttons: Buttons,
@@ -64,6 +85,8 @@ pub struct Engine {
     cal_press: Option<f64>,
     cal_toggle: bool,
     cal_ending_press: bool,
+    /// Movement mode switched at runtime (ToggleMovement); `None` = the profile's.
+    movement_override: Option<MoveMode>,
 }
 
 impl Engine {
@@ -84,6 +107,7 @@ impl Engine {
             cal_press: None,
             cal_toggle: false,
             cal_ending_press: false,
+            movement_override: None,
         }
     }
 
@@ -91,6 +115,7 @@ impl Engine {
     pub fn set_profile(&mut self, profile: Profile, sink: &mut dyn Sink) {
         self.release_all(sink);
         self.profile = profile;
+        self.movement_override = None;
     }
 
     pub fn release_all(&mut self, sink: &mut dyn Sink) {
@@ -110,7 +135,8 @@ impl Engine {
             gyro_calibrating: self.gyro.calibrating(),
             gyro_bias: self.gyro.bias(),
             flick_active: self.flick.active(),
-            next_pair: self.profile.layers.iter().find_map(|l| self.buttons.next_pair(Some(l.button))),
+            next_pair: self.next_pair(),
+            movement: self.movement_mode(),
         }
     }
 
@@ -131,6 +157,49 @@ impl Engine {
             set.insert(if right { Btn::PadRight } else { Btn::PadLeft });
         }
         set
+    }
+
+    pub fn movement_mode(&self) -> MoveMode {
+        self.movement_override.unwrap_or(self.profile.movement.mode)
+    }
+
+    fn next_pair(&self) -> Option<Btn> {
+        self.profile.layers.iter().find_map(|l| self.buttons.next_pair(Some(l.button)))
+    }
+
+    /// Light bar colour the profile asks for right now, if it drives the light bar at all.
+    pub fn lightbar(&self) -> Option<[u8; 3]> {
+        let lb = &self.profile.lightbar;
+        if !lb.enabled {
+            return None;
+        }
+        let pair = self.next_pair().and_then(|b| lb.pairs.iter().find(|(p, _)| *p == b).map(|(_, c)| *c));
+        Some(pair.unwrap_or(lb.idle))
+    }
+
+    fn apply(&mut self, actions: Vec<Action>, sink: &mut dyn Sink) {
+        for a in actions {
+            match a {
+                Action::ToggleMovement => {
+                    let next = match self.movement_mode() {
+                        MoveMode::Hybrid => MoveMode::Wasd,
+                        MoveMode::Wasd => MoveMode::Hybrid,
+                    };
+                    self.movement_override = Some(next);
+                    // Leaving WASD must not leave a movement key held.
+                    let keys = self.profile.movement.keys;
+                    for (i, key) in keys.iter().enumerate() {
+                        set(&mut self.held, &mut self.move_held[i], false, *key, sink);
+                    }
+                    if let Some(k) = self.profile.movement.walk {
+                        set(&mut self.held, &mut self.walk_held, false, k, sink);
+                    }
+                    if let Some(k) = self.profile.movement.sprint {
+                        set(&mut self.held, &mut self.sprint_held, false, k, sink);
+                    }
+                }
+            }
+        }
     }
 
     /// Calibration button as in JSM: a tap starts calibrating and the next tap finishes it;
@@ -166,12 +235,18 @@ impl Engine {
 
     /// Time without a new report: only timers run (tap releases, holds, pending taps).
     pub fn tick(&mut self, now: f64, sink: &mut dyn Sink) {
-        self.buttons.tick(now, &self.profile, &mut self.held, sink);
+        let mut tap = ActionTap { inner: sink, actions: Vec::new() };
+        self.buttons.tick(now, &self.profile, &mut self.held, &mut tap);
+        let actions = std::mem::take(&mut tap.actions);
+        self.apply(actions, sink);
     }
 
     pub fn update(&mut self, now: f64, s: &State, sink: &mut dyn Sink) {
         let dt = self.dt(now, s.timestamp_us);
-        self.buttons.tick(now, &self.profile, &mut self.held, sink);
+        let mut tap = ActionTap { inner: sink, actions: Vec::new() };
+        self.buttons.tick(now, &self.profile, &mut self.held, &mut tap);
+        let actions = std::mem::take(&mut tap.actions);
+        self.apply(actions, sink);
 
         let current = Self::inputs(s, self.profile.trigger_threshold);
         let released: Vec<Btn> = self.pressed.difference(&current).copied().collect();
@@ -180,13 +255,19 @@ impl Engine {
         pressed.sort_by_key(|b| !self.profile.layers.iter().any(|l| l.button == *b));
         let calibrate = self.profile.gyro.calibrate;
         for b in released {
-            self.buttons.release(b, now, &self.profile, &mut self.held, sink);
+            let mut tap = ActionTap { inner: sink, actions: Vec::new() };
+            self.buttons.release(b, now, &self.profile, &mut self.held, &mut tap);
+            let actions = std::mem::take(&mut tap.actions);
+            self.apply(actions, sink);
             if Some(b) == calibrate {
                 self.calibrate_released(now);
             }
         }
         for b in pressed {
-            self.buttons.press(b, now, &self.profile, &mut self.held, sink);
+            let mut tap = ActionTap { inner: sink, actions: Vec::new() };
+            self.buttons.press(b, now, &self.profile, &mut self.held, &mut tap);
+            let actions = std::mem::take(&mut tap.actions);
+            self.apply(actions, sink);
             if Some(b) == calibrate {
                 self.calibrate_pressed(now);
             }
@@ -223,7 +304,7 @@ impl Engine {
     /// (±63.4° sectors, diagonals press two keys); rings split at a rescaled length of `ring`.
     fn left_stick(&mut self, raw: [f32; 2], sink: &mut dyn Sink) {
         let m = &self.profile.movement;
-        if m.mode != MoveMode::Wasd {
+        if self.movement_mode() != MoveMode::Wasd {
             return;
         }
         let ([x, y], len) = apply_deadzone(raw, m.deadzone);
@@ -359,6 +440,38 @@ mod tests {
         feed(&mut e, &mut sink, 5.0, 5.1, PadButtons::NONE, [0.0, 0.2, 0.0]);
         assert!(!e.snapshot().gyro_calibrating);
         assert!((e.snapshot().gyro_bias[1] - 0.2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn toggle_movement_switches_and_releases_keys() {
+        let p = Profile::parse("[movement]\nmode = \"wasd\"\n[layer.r2]\nl3 = \"ToggleMovement\"").unwrap();
+        let mut e = Engine::new(p);
+        let mut sink = RecordSink::default();
+        let mut s = state(PadButtons::NONE, 0);
+        s.left = [0.0, 1.0];
+        e.update(0.0, &s, &mut sink);
+        assert_eq!(names(&mut sink), ["+W"]);
+        s.r2 = 1.0;
+        s.buttons = PadButtons::L3;
+        e.update(0.01, &s, &mut sink);
+        assert_eq!(e.movement_mode(), MoveMode::Hybrid);
+        assert_eq!(names(&mut sink), ["-W"], "stick no longer drives WASD; the command never reaches the system");
+        s.buttons = PadButtons::NONE;
+        s.r2 = 0.0;
+        e.update(0.02, &s, &mut sink);
+        assert!(names(&mut sink).is_empty());
+    }
+
+    #[test]
+    fn lightbar_shows_the_pending_pair() {
+        let p = Profile::parse("[weapons]\nslots = 8\nkeys = [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\"]").unwrap();
+        let mut e = Engine::new(p);
+        let mut sink = RecordSink::default();
+        assert_eq!(e.lightbar(), Some([0x30, 0x30, 0x30]));
+        let mut s = state(PadButtons::CIRCLE, 0);
+        s.r2 = 1.0;
+        e.update(0.0, &s, &mut sink);
+        assert_eq!(e.lightbar(), Some([0xFF, 0x28, 0x28]), "circle's second weapon is next");
     }
 
     #[test]

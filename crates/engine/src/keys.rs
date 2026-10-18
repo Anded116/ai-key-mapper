@@ -9,6 +9,15 @@ pub enum Output {
     Mouse(MouseButton),
     WheelUp,
     WheelDown,
+    /// An engine command instead of a key: fires once on press.
+    Action(Action),
+}
+
+/// Engine commands a binding can trigger.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Action {
+    /// Switch the left stick between hybrid (game reads it) and WASD.
+    ToggleMovement,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -130,6 +139,7 @@ const NAMES: &[(&str, Output)] = &[
     ("ScrollUp", Output::WheelUp),
     ("WheelDown", Output::WheelDown),
     ("ScrollDown", Output::WheelDown),
+    ("ToggleMovement", Output::Action(Action::ToggleMovement)),
 ];
 
 impl Output {
@@ -144,7 +154,7 @@ impl Output {
 
     /// Wheel notches have no "up" event: they fire once on press.
     pub fn is_pulse(self) -> bool {
-        matches!(self, Output::WheelUp | Output::WheelDown)
+        matches!(self, Output::WheelUp | Output::WheelDown | Output::Action(_))
     }
 }
 

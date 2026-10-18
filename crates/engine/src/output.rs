@@ -96,7 +96,7 @@ impl Sink for WinSink {
                 let delta: i32 = if out == Output::WheelUp { 120 } else { -120 };
                 mouse_input(MOUSEEVENTF_WHEEL, 0, 0, delta as u32)
             }
-            Output::WheelUp | Output::WheelDown => return,
+            Output::WheelUp | Output::WheelDown | Output::Action(_) => return,
         };
         send(&[input]);
     }
