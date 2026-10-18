@@ -12,13 +12,15 @@ export const TITLE: Record<string, string> = {
   up: 'Крестовина ↑', down: 'Крестовина ↓', left: 'Крестовина ←', right: 'Крестовина →',
   create: 'Create', options: 'Options', ps: 'PS', mic: 'Микрофон',
   pad_left: 'Тачпад — левая половина', pad_right: 'Тачпад — правая половина', touchpad: 'Тачпад',
+  pad_up_left: 'Тачпад — верх слева', pad_up_right: 'Тачпад — верх справа',
+  pad_down_left: 'Тачпад — низ слева', pad_down_right: 'Тачпад — низ справа',
 }
 
 /** Имя кнопки в профиле. */
 const PROFILE_NAME: Record<string, string> = { up: 'dpad_up', down: 'dpad_down', left: 'dpad_left', right: 'dpad_right' }
 
 /** Кнопки меню: обычное нажатие длиннее 150 мс, удержание им нужно с запасом. */
-const MENU = new Set(['options', 'create', 'touchpad', 'pad_left', 'pad_right', 'mic'])
+const MENU = new Set(['options', 'create', 'touchpad', 'pad_left', 'pad_right', 'pad_up_left', 'pad_up_right', 'pad_down_left', 'pad_down_right', 'mic'])
 
 type Mode = 'press' | 'taphold' | 'double' | 'pair' | 'latch'
 
@@ -109,7 +111,7 @@ export function mountEditor(root: HTMLElement, getBindings: () => Bindings | nul
       <footer>
         <div class="left">
           ${entry?.own && !b?.file.startsWith('_') ? '<button class="ghost" data-act="reset" title="Убрать правку игры, вернуть привязку из стандарта">Как в стандарте</button>' : ''}
-          <button class="ghost" data-act="unbind">Ничего не делать</button>
+          <button class="ghost" data-act="unbind" title="Кнопка перестанет что-либо слать в игру">Очистить</button>
         </div>
         <div class="right"><button class="ghost" data-act="close">Отмена</button><button class="primary" data-act="save">Сохранить</button></div>
       </footer>

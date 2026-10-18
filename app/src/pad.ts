@@ -19,12 +19,29 @@ const BODY = `M 287 125 C 412 110, 587 110, 712 125 C 812 135, 875 162, 900 237 
   C 940 612, 862 625, 825 587 C 787 550, 750 475, 700 440 C 650 415, 350 415, 300 440
   C 250 475, 212 550, 175 587 C 137 625, 60 612, 50 550 C 37 475, 69 337, 100 237 C 125 162, 187 135, 287 125 Z`
 
+/** Четверти тачпада 2×2: id, колонка, строка. */
+const QUARTERS: [string, number, number][] = [
+  ['pad_up_left', 0, 0], ['pad_up_right', 1, 0], ['pad_down_left', 0, 1], ['pad_down_right', 1, 1],
+]
+
+/** Половина тачпада, на которую падает клик по четверти без своей привязки. */
+export const QUARTER_HALF: Record<string, string> = {
+  pad_up_left: 'pad_left', pad_down_left: 'pad_left', pad_up_right: 'pad_right', pad_down_right: 'pad_right',
+}
+
+/** Четверть назначена хоть где-то: тогда движок шлёт её, а не половину. */
+export function quarterBound(b: Bindings, id: string): boolean {
+  return Boolean(b.buttons[id]) || Object.values(b.layers).some((l) => Boolean(l[id]))
+}
+
 /** Где и как рисовать подпись каждой кнопки. `cap` — плашка рядом с мелкой кнопкой. */
 const LABELS: Record<string, { x: number; y: number; w: number; cap?: boolean }> = {
   l2: { x: 280, y: 44, w: 190 }, r2: { x: 720, y: 44, w: 190 },
   l1: { x: 280, y: 91, w: 190 }, r1: { x: 720, y: 91, w: 190 },
   create: { x: 319, y: 153, w: 40 }, options: { x: 681, y: 153, w: 40 },
   pad_left: { x: 427, y: 205, w: 130 }, pad_right: { x: 573, y: 205, w: 130 },
+  pad_up_left: { x: 427, y: 165, w: 120 }, pad_up_right: { x: 573, y: 165, w: 120 },
+  pad_down_left: { x: 427, y: 245, w: 120 }, pad_down_right: { x: 573, y: 245, w: 120 },
   up: { x: DPAD.x, y: DPAD.y - 46, w: 46 }, down: { x: DPAD.x, y: DPAD.y + 46, w: 46 },
   left: { x: DPAD.x - 46, y: DPAD.y, w: 46 }, right: { x: DPAD.x + 46, y: DPAD.y, w: 46 },
   triangle: { x: FACE.x, y: FACE.y - 64, w: 58 }, circle: { x: FACE.x + 64, y: FACE.y, w: 58 },
@@ -143,8 +160,8 @@ export function mountPad(root: HTMLElement, onHover: (id: string | null) => void
     <path class="body" d="${BODY}" />
     <rect class="btn touchpad" data-btn="touchpad" x="${TOUCH.x}" y="${TOUCH.y}" width="${TOUCH.w}" height="${TOUCH.h}" rx="22" />
     <line class="touch-split" x1="500" y1="${TOUCH.y + 22}" x2="500" y2="${TOUCH.y + TOUCH.h - 22}" />
-    <rect class="hit" data-id="pad_left" x="${TOUCH.x}" y="${TOUCH.y}" width="${TOUCH.w / 2}" height="${TOUCH.h}" />
-    <rect class="hit" data-id="pad_right" x="500" y="${TOUCH.y}" width="${TOUCH.w / 2}" height="${TOUCH.h}" />
+    <line class="touch-split" id="touch-split-h" x1="${TOUCH.x + 22}" y1="${TOUCH.y + TOUCH.h / 2}" x2="${TOUCH.x + TOUCH.w - 22}" y2="${TOUCH.y + TOUCH.h / 2}" />
+    ${QUARTERS.map(([id, qx, qy]) => `<rect class="hit" data-id="${id}" x="${TOUCH.x + qx * TOUCH.w / 2}" y="${TOUCH.y + qy * TOUCH.h / 2}" width="${TOUCH.w / 2}" height="${TOUCH.h / 2}" />`).join('')}
     <g id="touches"></g>
     <rect class="btn" data-btn="create" data-id="create" x="294" y="126" width="50" height="54" rx="13" />
     <rect class="btn" data-btn="options" data-id="options" x="656" y="126" width="50" height="54" rx="13" />
@@ -158,6 +175,7 @@ export function mountPad(root: HTMLElement, onHover: (id: string | null) => void
   const shapes = [...svg.querySelectorAll<SVGElement>('[data-btn]')]
   const hits = [...svg.querySelectorAll<SVGElement>('[data-id]')]
   const layer = svg.querySelector<SVGGElement>('#labels')!
+  const splitLine = svg.querySelector<SVGLineElement>('#touch-split-h')!
   const touches = svg.querySelector<SVGGElement>('#touches')!
   const caps = { l: svg.querySelector('#stick-l')!, r: svg.querySelector('#stick-r')! }
   const fills = { l2: svg.querySelector('#fill-l2')!, r2: svg.querySelector('#fill-r2')! }
@@ -186,8 +204,25 @@ export function mountPad(root: HTMLElement, onHover: (id: string | null) => void
       layer.appendChild(g)
       labels[id] = g
     }
+    // тачпад: половина целиком, пока у неё нет своих четвертей; иначе по четвертям
+    let split = false
+    for (const half of ['pad_left', 'pad_right']) {
+      const qs = Object.keys(QUARTER_HALF).filter((q) => QUARTER_HALF[q] === half)
+      if (!qs.some((q) => quarterBound(b, q))) {
+        const own = layerMap[half]
+        add(half, own ?? b.buttons[half], own ? 'in-layer' : view ? 'dim' : '')
+        continue
+      }
+      split = true
+      for (const q of qs) {
+        const src = quarterBound(b, q) ? q : half
+        const own = layerMap[src]
+        add(q, own ?? b.buttons[src], own ? 'in-layer' : view ? 'dim' : '')
+      }
+    }
+    splitLine.style.display = split ? '' : 'none'
     for (const id of Object.keys(LABELS)) {
-      if (id.startsWith('mv')) continue
+      if (id.startsWith('mv') || id.startsWith('pad_')) continue
       if (b.layers[id] && !b.buttons[id]) {
         add(id, { parts: [{ how: 'press', keys: ['слой'] }], note: null, own: false }, view === id ? 'layer-key' : 'layer-key idle')
         continue
@@ -204,7 +239,11 @@ export function mountPad(root: HTMLElement, onHover: (id: string | null) => void
 
   const draw = (s: PadState) => {
     const pressed = new Set(s.buttons.map((b) => b.toLowerCase()))
-    if (pressed.has('touchpad') && s.touch.length) pressed.add(s.touch[0].x < 0.5 ? 'pad_left' : 'pad_right')
+    if (pressed.has('touchpad') && s.touch.length) {
+      const [x, y] = [s.touch[0].x >= 0.5, s.touch[0].y >= 0.5]
+      pressed.add(x ? 'pad_right' : 'pad_left')
+      pressed.add(`pad_${y ? 'down' : 'up'}_${x ? 'right' : 'left'}`)
+    }
     for (const el of shapes) el.classList.toggle('on', pressed.has(el.dataset.btn!))
     for (const [id, g] of Object.entries(labels)) g.classList.toggle('on', pressed.has(id))
     caps.l.setAttribute('transform', `translate(${(s.sticks.left[0] * STICK_TRAVEL).toFixed(1)} ${(-s.sticks.left[1] * STICK_TRAVEL).toFixed(1)})`)

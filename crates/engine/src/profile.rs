@@ -13,7 +13,8 @@ use toml::{Table, Value};
 use crate::keys::Output;
 
 /// Controller inputs a binding can sit on. `Touch` is a finger on the touchpad,
-/// `PadLeft` / `PadRight` are touchpad clicks on that half.
+/// `PadLeft` / `PadRight` are touchpad clicks on that half; the four `Pad*` quarters split it 2×2
+/// and, where bound, take the click instead of their half.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Btn {
     L1,
@@ -38,9 +39,13 @@ pub enum Btn {
     Touch,
     PadLeft,
     PadRight,
+    PadUpLeft,
+    PadUpRight,
+    PadDownLeft,
+    PadDownRight,
 }
 
-pub const ALL_BTNS: [(Btn, &str); 22] = [
+pub const ALL_BTNS: [(Btn, &str); 26] = [
     (Btn::L1, "l1"),
     (Btn::R1, "r1"),
     (Btn::L2, "l2"),
@@ -63,6 +68,10 @@ pub const ALL_BTNS: [(Btn, &str); 22] = [
     (Btn::Touch, "touch"),
     (Btn::PadLeft, "pad_left"),
     (Btn::PadRight, "pad_right"),
+    (Btn::PadUpLeft, "pad_up_left"),
+    (Btn::PadUpRight, "pad_up_right"),
+    (Btn::PadDownLeft, "pad_down_left"),
+    (Btn::PadDownRight, "pad_down_right"),
 ];
 
 impl Btn {

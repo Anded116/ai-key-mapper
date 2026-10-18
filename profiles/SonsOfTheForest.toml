@@ -1,6 +1,7 @@
 extends = "_base"
 game = "Sons of the Forest"
 exe = "SonsOfTheForest.exe"
+prompts = "ru"
 
 # No known value for this game: deliberately slow start, tune with a 360° flick.
 [calibration]
@@ -17,13 +18,15 @@ mode = "wasd"
 [buttons]
 r3 = "MouseMiddle"              # третье действие
 triangle = "Q"                  # повернуть постройку / след. категория сумки
-create = "Tab"                  # инвентарь; удержание — рюкзак
+create = ""
 dpad_up = "B"                   # книга выживания
 dpad_down = "G"                 # выбросить
 dpad_left = "L"                 # зажигалка
 dpad_right = ""                 # свободно: карты на клавише в игре нет, GPS — предмет в инвентаре
 pad_left = "C"                  # разобрать
 pad_right = "X"                 # отмена постройки / режим книги
+pad_down_left = "T"             # рация
+pad_down_right = "Z"            # сон
 mic = "MouseBack"               # рация: нажми и говори
 
 [weapons]                       # hotkeys 1–8, assigned in the inventory
@@ -32,6 +35,4 @@ keys = ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 [layer.r2]
 create = ""
-options = ""
-dpad_up = "T"                   # рация
-dpad_down = "Z"                 # сон
+options = "Tab"                 # инвентарь

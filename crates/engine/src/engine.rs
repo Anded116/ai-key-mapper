@@ -32,6 +32,8 @@ const PAD_BITS: [(PadButtons, Btn); 17] = [
 
 /// Half of the touchpad width in touch units (DualSense and DS4 are both 1920 wide).
 const PAD_HALF_X: u16 = 960;
+/// Half of the DualSense touchpad height (1080; the DS4 pad is 942 tall, its middle a little higher).
+const PAD_HALF_Y: u16 = 540;
 /// A calibrate press shorter than this toggles calibration instead of holding it.
 const CAL_TAP_S: f64 = 0.3;
 
@@ -143,7 +145,8 @@ impl Engine {
         }
     }
 
-    fn inputs(s: &State, trigger_threshold: f32) -> BTreeSet<Btn> {
+    fn inputs(&self, s: &State) -> BTreeSet<Btn> {
+        let trigger_threshold = self.profile.trigger_threshold;
         let mut set: BTreeSet<Btn> = PAD_BITS.iter().filter(|(b, _)| s.buttons.contains(*b)).map(|(_, x)| *x).collect();
         if s.l2 > trigger_threshold {
             set.insert(Btn::L2);
@@ -157,7 +160,16 @@ impl Engine {
         }
         if s.buttons.contains(PadButtons::TOUCHPAD) {
             let right = finger.is_some_and(|t| t.x >= PAD_HALF_X);
-            set.insert(if right { Btn::PadRight } else { Btn::PadLeft });
+            let lower = finger.is_some_and(|t| t.y >= PAD_HALF_Y);
+            let quarter = match (lower, right) {
+                (false, false) => Btn::PadUpLeft,
+                (false, true) => Btn::PadUpRight,
+                (true, false) => Btn::PadDownLeft,
+                (true, true) => Btn::PadDownRight,
+            };
+            let p = &self.profile;
+            let bound = p.buttons.contains_key(&quarter) || p.layers.iter().any(|l| l.bindings.contains_key(&quarter));
+            set.insert(if bound { quarter } else if right { Btn::PadRight } else { Btn::PadLeft });
         }
         set
     }
@@ -275,7 +287,7 @@ impl Engine {
         let actions = std::mem::take(&mut tap.actions);
         self.apply(actions, sink);
 
-        let current = Self::inputs(s, self.profile.trigger_threshold);
+        let current = self.inputs(s);
         let released: Vec<Btn> = self.pressed.difference(&current).copied().collect();
         let mut pressed: Vec<Btn> = current.difference(&self.pressed).copied().collect();
         // Layer buttons first, so R2 and □ landing in one report still select the weapon.
@@ -397,6 +409,25 @@ mod tests {
         e.update(0.0, &s, &mut sink);
         e.update(0.01, &state(PadButtons::NONE, 10_000), &mut sink);
         assert_eq!(names(&mut sink), ["+F2", "-F2"]);
+    }
+
+    #[test]
+    fn touchpad_quarters_take_their_half() {
+        let p = Profile::parse("[buttons]
+pad_left = \"F1\"
+pad_down_left = \"Z\"").unwrap();
+        let mut e = Engine::new(p);
+        let mut sink = RecordSink::default();
+        let click = |e: &mut Engine, sink: &mut RecordSink, t: f64, x: u16, y: u16| {
+            let mut s = state(PadButtons::TOUCHPAD, (t * 1e6) as u32);
+            s.touch[0] = Touch { active: true, id: 1, x, y };
+            e.update(t, &s, sink);
+            e.update(t + 0.01, &state(PadButtons::NONE, ((t + 0.01) * 1e6) as u32), sink);
+        };
+        click(&mut e, &mut sink, 0.0, 300, 900);
+        assert_eq!(names(&mut sink), ["+Z", "-Z"], "bound lower-left quarter");
+        click(&mut e, &mut sink, 1.0, 300, 200);
+        assert_eq!(names(&mut sink), ["+F1", "-F1"], "upper-left falls back to the left half");
     }
 
     #[test]

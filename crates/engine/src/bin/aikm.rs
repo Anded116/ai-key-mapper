@@ -44,14 +44,14 @@ fn check(path: &Path) {
     let mut buttons: Vec<_> = p.buttons.iter().collect();
     buttons.sort_by_key(|(b, _)| **b);
     for (b, binding) in buttons {
-        println!("  {:<10} {}", b.name(), describe(binding));
+        println!("  {:<14} {}", b.name(), describe(binding));
     }
     for layer in &p.layers {
         println!("слой {}:", layer.button.name());
         let mut bs: Vec<_> = layer.bindings.iter().collect();
         bs.sort_by_key(|(b, _)| **b);
         for (b, binding) in bs {
-            println!("  {:<10} {}", b.name(), describe(binding));
+            println!("  {:<14} {}", b.name(), describe(binding));
         }
     }
 }

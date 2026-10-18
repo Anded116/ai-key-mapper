@@ -1,5 +1,6 @@
 import { keyFace } from './keys'
 import { TITLE } from './editor'
+import { QUARTER_HALF, quarterBound } from './pad'
 import type { BindingEntry, Bindings } from './types'
 
 /**
@@ -67,9 +68,13 @@ export function renderInspector(el: HTMLElement, b: Bindings | null, id: string 
     el.innerHTML = `${title}<p class="ins-note">Калибровка гироскопа: тап — начать и закончить, удержание — калибрует, пока держишь. Положи геймпад неподвижно.</p><p class="ins-note">PS + Create — пауза.</p>`
     return
   }
+  // четверть тачпада без своей привязки работает как её половина
+  const half = QUARTER_HALF[id]
+  const src = half && !quarterBound(b, id) ? half : id
+  const shared = src !== id ? ' · как вся половина' : ''
   el.innerHTML = `${title}
-    ${tile('Обычно', b.buttons[id], null, base)}
-    ${tile('С зажатым R2', b.layers[LAYER]?.[id], LAYER, base)}`
+    ${tile('Обычно' + shared, b.buttons[src], null, base)}
+    ${tile('С зажатым R2' + shared, b.layers[LAYER]?.[src], LAYER, base)}`
   for (const btn of el.querySelectorAll<HTMLElement>('[data-edit]')) {
     btn.addEventListener('click', () => onEdit(id, btn.dataset.edit || null))
   }

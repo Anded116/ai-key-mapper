@@ -189,7 +189,7 @@ function drawPad(s: PadState) {
   const pressed = pad.draw(s)
   // нажал кнопку на геймпаде — карточка показывает её
   for (const id of pressed) {
-    if (!lastPressed.has(id) && id !== 'touchpad' && id !== heldLayer) {
+    if (!lastPressed.has(id) && id !== 'touchpad' && id !== 'pad_left' && id !== 'pad_right' && id !== heldLayer) {
       selected = id
       inspect()
     }
