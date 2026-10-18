@@ -8,7 +8,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").repl
 
 export const TITLE: Record<string, string> = {
   l1: 'L1', r1: 'R1', l2: 'L2', r2: 'R2', l3: 'L3 — клик левого стика', r3: 'R3 — клик правого стика',
-  cross: '✕', circle: '○', square: '□', triangle: '△',
+  cross: '✕ Крест', circle: '○ Круг', square: '□ Квадрат', triangle: '△ Треугольник',
   up: 'Крестовина ↑', down: 'Крестовина ↓', left: 'Крестовина ←', right: 'Крестовина →',
   create: 'Create', options: 'Options', ps: 'PS', mic: 'Микрофон',
   pad_left: 'Тачпад — левая половина', pad_right: 'Тачпад — правая половина', touchpad: 'Тачпад',

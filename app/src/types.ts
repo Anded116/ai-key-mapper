@@ -23,6 +23,7 @@ export interface AgentEvent {
 export interface Bindings {
   profile: string
   file: string
+  prompts: 'ru' | 'en'
   buttons: Record<string, BindingEntry>
   layers: Record<string, Record<string, BindingEntry>>
   move_keys: string[]

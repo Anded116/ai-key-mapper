@@ -4,7 +4,7 @@ import { mountPad } from './pad'
 import { mountEditor } from './editor'
 import { renderInspector } from './inspector'
 import { mountChat } from './chat'
-import { keyFace } from './keys'
+import { keyFace, setPromptLang } from './keys'
 import type { Bindings, PadState } from './types'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
@@ -69,6 +69,11 @@ async function show(file: string | null) {
       ? 'Стандарт: игры его наследуют и меняют только своё. Правка здесь меняет все игры, где кнопка не переопределена.'
       : ''
     : 'Выбери профиль слева.'
+  setPromptLang(viewed?.prompts ?? 'ru')
+  for (const btn of $('prompts').querySelectorAll<HTMLElement>('button')) {
+    btn.classList.toggle('active', btn.dataset.lang === (viewed?.prompts ?? 'ru'))
+  }
+  $('prompts').hidden = !viewed
   drawProfiles()
   relabel()
   inspect()
@@ -82,6 +87,12 @@ async function refresh() {
 $('profiles').addEventListener('click', (ev) => {
   const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-file]')
   if (btn) void show(btn.dataset.file!)
+})
+$('prompts').addEventListener('click', async (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-lang]')
+  if (!btn || !viewed || btn.dataset.lang === viewed.prompts) return
+  await invoke('set_prompts', { file: viewed.file, lang: btn.dataset.lang })
+  await show(viewed.file)
 })
 $('layer-switch').addEventListener('click', (ev) => {
   const btn = (ev.target as HTMLElement).closest<HTMLElement>('button')

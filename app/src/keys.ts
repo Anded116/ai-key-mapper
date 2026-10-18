@@ -22,6 +22,12 @@ const WORD: Record<string, string> = {
   ToggleMovement: 'WASD ↔ стик',
 }
 
+/** Названия на английском — для игр, которые пишут подсказки по-английски. */
+const WORD_EN: Record<string, string> = {
+  Space: 'Space', MouseLeft: 'LMB', MouseRight: 'RMB', MouseMiddle: 'MMB', MouseBack: 'M4', MouseForward: 'M5',
+  WheelUp: 'Wheel ↑', WheelDown: 'Wheel ↓',
+}
+
 /** Подсказка к клавише в редакторе и в тултипе. */
 const HINT: Record<string, string> = {
   MouseLeft: 'левая кнопка мыши', MouseRight: 'правая кнопка мыши', MouseMiddle: 'средняя кнопка мыши (колесо)',
@@ -39,10 +45,21 @@ export interface KeyFace {
   title: string
 }
 
+/** Как игра пишет клавиши: `ru` — буквы русской раскладки крупно (S → Ы), `en` — латиница крупно. */
+let lang: 'ru' | 'en' = 'ru'
+
+export function setPromptLang(l: string) {
+  lang = l === 'en' ? 'en' : 'ru'
+}
+
 export function keyFace(name: string): KeyFace {
   const ru = RU[name]
-  if (ru) return { main: ru, sub: SYMBOL[name] ?? name, wide: false, title: `${ru} / ${SYMBOL[name] ?? name}` }
-  const main = WORD[name] ?? SYMBOL[name] ?? name
+  if (ru) {
+    const latin = SYMBOL[name] ?? name
+    const [main, sub] = lang === 'en' ? [latin, ru] : [ru, latin]
+    return { main, sub, wide: false, title: `${ru} / ${latin}` }
+  }
+  const main = (lang === 'en' ? WORD_EN[name] : undefined) ?? WORD[name] ?? SYMBOL[name] ?? name
   return { main, wide: main.length > 3, title: HINT[name] ?? main }
 }
 

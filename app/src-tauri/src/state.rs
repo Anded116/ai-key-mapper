@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use dualsense::Bus;
-use engine::profile::{binding_notes, Binding, Btn};
+use engine::profile::{binding_notes, Binding, Btn, Prompts};
 use engine::runner::{self, Command, Config, Frame, Handle};
 use engine::{Output, Profile};
 use serde::Serialize;
@@ -133,6 +133,8 @@ pub struct Bindings {
     pub profile: String,
     /// Файл профиля игры, куда пишутся правки.
     pub file: String,
+    /// Как игра пишет клавиши в подсказках: `ru` (S → Ы) или `en`.
+    pub prompts: &'static str,
     /// По id кнопки на схеме: `l1`, `cross`, `up`, `pad_left`…
     pub buttons: BTreeMap<String, Entry>,
     /// Слои: `r2` → кнопки слоя.
@@ -220,6 +222,10 @@ impl Bindings {
         };
         Some(Self {
             profile: p.game.clone(),
+            prompts: match p.prompts {
+                Prompts::Ru => "ru",
+                Prompts::En => "en",
+            },
             file: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
             buttons: table(&p.buttons, "buttons"),
             layers: p
@@ -420,4 +426,13 @@ mod tests {
         assert!(profile_file("nope.toml").is_err());
         assert!(profile_file("testrange.toml").is_ok());
     }
+}
+
+/// Язык подсказок для профиля: меняет, крупно на кнопках русская буква или латинская.
+#[tauri::command]
+pub fn set_prompts(file: String, lang: String) -> Result<(), String> {
+    if lang != "ru" && lang != "en" {
+        return Err(format!("язык подсказок: ru или en, а не {lang}"));
+    }
+    edit::set_prompts(&profile_file(&file)?, &lang)
 }

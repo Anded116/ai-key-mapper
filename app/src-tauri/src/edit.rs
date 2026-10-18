@@ -93,6 +93,13 @@ pub fn set(path: &Path, button: &str, layer: Option<&str>, edit: &Edit, note: &s
     })
 }
 
+/// Язык подсказок игры: `prompts = "ru"` или `"en"` в корне профиля.
+pub fn set_prompts(path: &Path, lang: &str) -> Result<(), String> {
+    write(path, |doc| {
+        doc.insert("prompts", toml_edit::value(lang));
+    })
+}
+
 /// Убрать привязку из файла игры: снова действует то, что в базовом профиле.
 pub fn reset(path: &Path, button: &str, layer: Option<&str>) -> Result<(), String> {
     write(path, |doc| {
@@ -124,6 +131,9 @@ mod tests {
         assert!(text.contains("r1 = \"MouseLeft\"                # огонь\n"), "{text}");
         assert!(text.contains("options = { tap = \"Esc\", hold = \"M\", hold_ms = 500 }   # пауза / карта"), "{text}");
         assert!(text.contains("[layer.r2]\ndpad_down = \"Z\""), "{text}");
+        set_prompts(&path, "en").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.find("prompts = \"en\"").unwrap() < text.find("[buttons]").unwrap(), "{text}");
         reset(&path, "options", None).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("options"));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());

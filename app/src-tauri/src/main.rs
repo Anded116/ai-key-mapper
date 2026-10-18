@@ -23,6 +23,7 @@ fn main() {
             state::profile_bindings,
             state::set_binding,
             state::reset_binding,
+            state::set_prompts,
             state::set_paused,
             state::calibrate,
             state::engine_log

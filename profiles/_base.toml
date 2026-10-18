@@ -1,6 +1,8 @@
 # Core of the layout standard (docs/layout-standard.md). Game profiles inherit it with
 # extends = "_base" and override only what the game needs.
 
+prompts = "ru"                  # как игра пишет клавиши в подсказках: "ru" — S как Ы, "en" — латиница
+
 [calibration]
 real_world = 40.0               # mouse counts per degree at in-game sensitivity 1
 in_game_sens = 1.0

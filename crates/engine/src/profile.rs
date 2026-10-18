@@ -160,6 +160,14 @@ pub struct FlickCfg {
     pub deadzone: Deadzone,
 }
 
+/// How the game names keys in its prompts: Cyrillic on a Russian layout (S → Ы) or Latin.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Prompts {
+    #[default]
+    Ru,
+    En,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum MoveMode {
     /// The game reads the left stick itself.
@@ -219,6 +227,8 @@ pub struct Profile {
     pub lightbar: LightbarCfg,
     /// Hide the controller from games with HidHide while running (keyboard/mouse-only games).
     pub hide_controller: bool,
+    /// Language of the game's key prompts, for the key labels in the app.
+    pub prompts: Prompts,
     pub buttons: HashMap<Btn, Binding>,
     pub layers: Vec<Layer>,
 }
@@ -249,6 +259,8 @@ struct Raw {
     game: Option<String>,
     #[serde(default)]
     exe: Option<String>,
+    #[serde(default)]
+    prompts: Option<String>,
     #[serde(default)]
     calibration: RawCalibration,
     #[serde(default)]
@@ -753,6 +765,11 @@ fn compile(mut raw: Raw, fallback_name: &str) -> Result<Profile, ProfileError> {
             ],
         },
         hide_controller: raw.controller.hide,
+        prompts: match raw.prompts.as_deref() {
+            None | Some("ru") => Prompts::Ru,
+            Some("en") => Prompts::En,
+            Some(other) => return err(format!("prompts must be \"ru\" or \"en\", got \"{other}\"")),
+        },
         buttons,
         layers,
     })

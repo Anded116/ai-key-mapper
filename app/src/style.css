@@ -9,9 +9,9 @@
   --line: #1f2228;
   --line-2: #2a2e36;
   --text: #e3e5ea;
-  --text-2: #aeb3bd;
-  --muted: #767c88;
-  --faint: #474c56;
+  --text-2: #c4c8cf;
+  --muted: #969ca7;
+  --faint: #6a707b;
   --accent: #8fb3c4;
   --accent-bg: rgba(143, 179, 196, 0.1);
   --accent-line: rgba(143, 179, 196, 0.45);
@@ -165,17 +165,70 @@ button.ghost:hover:not(:disabled) { color: var(--text); border-color: #3a3f49; }
 .side-hint { margin: 8px 4px 0; color: var(--faint); font-size: 12px; }
 #layer-switch button[data-view='r2'].active { color: var(--layer); }
 
-.inspect { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); min-height: 160px; }
-.ins-empty { color: var(--muted); font-size: 12.5px; }
-.ins-title { font-size: 15px; font-weight: 600; }
-.ins-block { display: flex; flex-direction: column; gap: 6px; }
-.ins-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--faint); letter-spacing: 0.04em; text-transform: uppercase; }
-.origin { text-transform: none; letter-spacing: 0; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line-2); color: var(--muted); font-size: 10.5px; }
-.origin.own { color: var(--accent); border-color: var(--accent-line); }
-.link { margin-left: auto; color: var(--accent); font-size: 12px; text-transform: none; letter-spacing: 0; }
-.link:hover { color: var(--text); }
-.ins-act { color: var(--text); font-size: 13px; }
-.ins-caps { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.inspect-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.inspect { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 150px; }
+.ins-title { font-size: 15px; font-weight: 600; padding: 0 4px 4px; }
+.ins-note { margin: 0 4px; color: var(--text-2); font-size: 12.5px; }
+.ins-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 16px;
+  border: 1px dashed var(--line-2);
+  border-radius: 10px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.ins-empty svg { width: 30px; height: 30px; fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.ins-empty p { margin: 0; }
+.faint-p { color: var(--muted); }
+
+.tile {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 34px 11px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  text-align: left;
+  transition: border-color 120ms, background 120ms;
+}
+.tile:hover { border-color: var(--line-2); background: var(--raise); }
+.tile.tile-layer { border-left: 2px solid var(--layer-line); }
+.tile.empty { background: transparent; border-style: dashed; }
+.tile-key { display: flex; align-items: center; gap: 3px; flex: none; min-width: 34px; }
+.tile-key .cap { height: 34px; min-width: 34px; }
+.tile-key .cap b { font-size: 19px; }
+.tile-key .cap.wide b { font-size: 13px; }
+.tile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile-act { color: var(--text); font-size: 13px; line-height: 1.35; }
+.tile.empty .tile-act { color: var(--text-2); }
+.tile-more { color: var(--text-2); font-size: 12px; }
+.tile-meta { color: var(--muted); font-size: 11.5px; }
+.tile-layer .tile-meta { color: var(--layer); }
+.tile-edit { position: absolute; top: 11px; right: 10px; width: 15px; height: 15px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 120ms; }
+.tile:hover .tile-edit { opacity: 1; }
+
+.prompts[hidden] { display: none; }
+.prompts {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  z-index: 2;
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+}
+.prompts button { padding: 2px 8px; border-radius: 5px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+.prompts button:hover { color: var(--text-2); }
+.prompts button.active { background: var(--raise); color: var(--text); }
 
 .cap {
   display: inline-flex;

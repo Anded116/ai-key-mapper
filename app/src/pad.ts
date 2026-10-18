@@ -23,14 +23,14 @@ const BODY = `M 287 125 C 412 110, 587 110, 712 125 C 812 135, 875 162, 900 237 
 const LABELS: Record<string, { x: number; y: number; w: number; cap?: boolean }> = {
   l2: { x: 280, y: 44, w: 190 }, r2: { x: 720, y: 44, w: 190 },
   l1: { x: 280, y: 91, w: 190 }, r1: { x: 720, y: 91, w: 190 },
-  create: { x: 262, y: 150, w: 70, cap: true }, options: { x: 738, y: 150, w: 70, cap: true },
+  create: { x: 319, y: 153, w: 40 }, options: { x: 681, y: 153, w: 40 },
   pad_left: { x: 427, y: 205, w: 130 }, pad_right: { x: 573, y: 205, w: 130 },
   up: { x: DPAD.x, y: DPAD.y - 46, w: 46 }, down: { x: DPAD.x, y: DPAD.y + 46, w: 46 },
   left: { x: DPAD.x - 46, y: DPAD.y, w: 46 }, right: { x: DPAD.x + 46, y: DPAD.y, w: 46 },
   triangle: { x: FACE.x, y: FACE.y - 64, w: 58 }, circle: { x: FACE.x + 64, y: FACE.y, w: 58 },
   cross: { x: FACE.x, y: FACE.y + 64, w: 58 }, square: { x: FACE.x - 64, y: FACE.y, w: 58 },
   l3: { x: STICK_L.x, y: STICK_L.y, w: 70 }, r3: { x: STICK_R.x, y: STICK_R.y, w: 70 },
-  ps: { x: 500, y: 318, w: 90, cap: true }, mic: { x: 500, y: 436, w: 90, cap: true },
+  ps: { x: 500, y: 342, w: 36 }, mic: { x: 500, y: 386, w: 64 },
   mv0: { x: STICK_L.x, y: STICK_L.y - 84, w: 40, cap: true }, mv1: { x: STICK_L.x - 86, y: STICK_L.y, w: 40, cap: true },
   mv2: { x: STICK_L.x, y: STICK_L.y + 84, w: 40, cap: true }, mv3: { x: STICK_L.x + 86, y: STICK_L.y, w: 40, cap: true },
 }
@@ -146,10 +146,10 @@ export function mountPad(root: HTMLElement, onHover: (id: string | null) => void
     <rect class="hit" data-id="pad_left" x="${TOUCH.x}" y="${TOUCH.y}" width="${TOUCH.w / 2}" height="${TOUCH.h}" />
     <rect class="hit" data-id="pad_right" x="500" y="${TOUCH.y}" width="${TOUCH.w / 2}" height="${TOUCH.h}" />
     <g id="touches"></g>
-    <rect class="btn" data-btn="create" data-id="create" x="308" y="140" width="18" height="44" rx="9" />
-    <rect class="btn" data-btn="options" data-id="options" x="674" y="140" width="18" height="44" rx="9" />
-    <circle class="btn" data-btn="ps" data-id="ps" cx="500" cy="362" r="17" />
-    <rect class="btn" data-btn="mic" data-id="mic" x="478" y="396" width="44" height="12" rx="6" />
+    <rect class="btn" data-btn="create" data-id="create" x="294" y="126" width="50" height="54" rx="13" />
+    <rect class="btn" data-btn="options" data-id="options" x="656" y="126" width="50" height="54" rx="13" />
+    <circle class="btn" data-btn="ps" data-id="ps" cx="500" cy="342" r="22" />
+    <rect class="btn" data-btn="mic" data-id="mic" x="462" y="372" width="76" height="28" rx="14" />
     ${dpad()}${face()}${stick('l', STICK_L)}${stick('r', STICK_R)}
     <g id="labels"></g>
   </svg>`
