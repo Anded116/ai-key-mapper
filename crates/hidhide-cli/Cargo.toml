@@ -1,0 +1,28 @@
+[package]
+name = "hidhide-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Hide DualSense via HidHide with a journal that undoes only our own changes"
+
+[[bin]]
+name = "aikm-hidhide"
+path = "src/main.rs"
+
+[[bin]]
+name = "aikm-hidhide-guard"
+path = "src/guard.rs"
+
+[dependencies]
+hidhide = { path = "../hidhide" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+]
