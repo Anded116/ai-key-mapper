@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ai-key-mapper</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="board">
+        <header class="topbar">
+          <div class="brand">ai-key-mapper</div>
+          <div class="pad-info" id="pad-info">геймпад не подключён</div>
+          <div class="profile">профиль <b id="profile">—</b></div>
+        </header>
+        <div class="stage">
+          <div class="pad-wrap" id="pad"></div>
+          <aside class="status">
+            <div class="card">
+              <h3>Слой</h3>
+              <div class="layer" id="layer">базовый</div>
+            </div>
+            <div class="card">
+              <h3>Оружие · R2 +</h3>
+              <div class="weapons" id="weapons"></div>
+              <div class="hint" id="weapon-hint">&nbsp;</div>
+            </div>
+            <div class="card">
+              <h3>Уходит в игру</h3>
+              <div class="outputs" id="outputs"></div>
+            </div>
+            <div class="card">
+              <h3>Гироскоп, °/с</h3>
+              <div class="gyro" id="gyro"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+      <section class="chat">
+        <header class="chat-head">
+          <span>Агент</span>
+          <button id="chat-reset" class="ghost" title="Следующее сообщение начнёт новую сессию">Новый диалог</button>
+        </header>
+        <div class="feed" id="feed">
+          <div class="msg system">Опиши игру — агент соберёт под неё раскладку.</div>
+        </div>
+        <form class="composer" id="composer">
+          <textarea id="input" rows="3" placeholder="Например: собери профиль для TestRange"></textarea>
+          <button type="submit" id="send">Отправить</button>
+        </form>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
