@@ -47,6 +47,8 @@ pub struct Snapshot {
     /// Paired button (in the weapon layer) whose second slot the next press gives.
     pub next_pair: Option<Btn>,
     pub movement: MoveMode,
+    /// Key of the last weapon chosen through an R2 pair.
+    pub weapon: Option<Output>,
 }
 
 
@@ -137,6 +139,7 @@ impl Engine {
             flick_active: self.flick.active(),
             next_pair: self.next_pair(),
             movement: self.movement_mode(),
+            weapon: self.buttons.last_weapon(),
         }
     }
 
@@ -231,6 +234,17 @@ impl Engine {
             } else {
                 self.gyro.end_calibration(now, TRIM_S, TRIM_S);
             }
+        }
+    }
+
+    /// Same as a tap of the calibrate button: starts calibrating, or finishes a running one.
+    pub fn toggle_calibration(&mut self, now: f64) {
+        if self.gyro.calibrating() {
+            self.gyro.end_calibration(now, TRIM_S, TRIM_S);
+            self.cal_toggle = false;
+        } else {
+            self.gyro.begin_calibration(now);
+            self.cal_toggle = true;
         }
     }
 

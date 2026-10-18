@@ -30,6 +30,9 @@ if ($running) {
 if ($withAikm -and (Get-Process JoyShockMapper -ErrorAction SilentlyContinue)) {
     Stop-WithMessage "Запущен JoyShockMapper. Закрой его: два маппера сразу задвоят ввод."
 }
+if ($Mode -ne "" -and (Get-Process aikm-app -ErrorAction SilentlyContinue)) {
+    Stop-WithMessage "Открыто окно ai-key-mapper: оно уже работает маппером. Закрой его или запусти просто TestRange.cmd."
+}
 
 if (Get-Command cargo -ErrorAction SilentlyContinue) {
     $packages = @()

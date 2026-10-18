@@ -9,7 +9,7 @@
 | `crates/dualsense` | Ввод и вывод PlayStation-геймпадов по HID: USB и Bluetooth, кнопки, стики, курки, тачпад, гироскоп и акселерометр с заводской калибровкой, световая полоса; утилита `aikm-probe` (`Probe.cmd`) | этап 1 готов |
 | `crates/engine` | Движок маппинга: профиль TOML с наследованием, биндинги (tap/hold, двойное нажатие, слои), гироскоп, flick stick, левый стик как WASD с кольцами, вывод через SendInput; CLI `aikm run / check` | этап 2: ядро готово |
 | `crates/hidhide`, `crates/hidhide-cli` | Скрытие геймпада от игры через драйвер HidHide (IOCTL), журнал и сторож для отката | прототип готов, см. [hid-hiding.md](hid-hiding.md) |
-| `app/` | Tauri: окно и трей, миничат с агентом, живая схема DualSense, профили, автозагрузка по игре | этап 3 |
+| `app/` | Tauri: окно и трей, миничат с агентом, живая схема DualSense, профили, автозагрузка по игре | этап 3: окно крутит настоящий движок |
 | `.claude/skills/` | Скиллы агента: собрать профиль, откалибровать, проверить в TestRange, импорт JSM | этап 4 |
 | `demo/` | TestRange — тестовая игра для отладки раскладок | есть |
 | `jsm/` | Пресет JSM для TestRange: эталон поведения, пока свой движок не готов | есть |
@@ -78,6 +78,8 @@ options = "F9"
 
 ## Контракт движок → UI (событие `state`, ~60 Гц)
 
+Цикл движка — `engine::runner`: его крутят и CLI `aikm`, и окно. Окно переводит кадр `runner::Frame` в событие `state`:
+
 ```json
 {
   "pad": { "model": "DualSense", "bus": "bluetooth", "battery": 0.8 },
@@ -88,12 +90,15 @@ options = "F9"
   "touch": [{ "x": 0.3, "y": 0.6 }],
   "layer": "r2",
   "outputs": ["W", "LShift"],
-  "profile": "testrange",
-  "weapons": { "current": 5, "next_double": "circle" }
+  "profile": "TestRange",
+  "weapons": { "current": 5, "next_double": "circle" },
+  "engine": { "focused": true, "paused": false, "hidden": true, "calibrating": false, "movement": "wasd" }
 }
 ```
 
-Команды UI → движок: `load_profile(path)`, `list_profiles()`, `calibrate_gyro()`, `set_hidden(bool)` (HidHide), `pause(bool)`.
+`pad` — `null`, пока геймпад не найден; `battery` — `null`, пока он не сообщил заряд. `gyro_dps` — уже без смещения из калибровки. Строки журнала движка приходят событием `log`.
+
+Команды UI → движок: `set_paused(paused)`, `calibrate()` (как тап по PS), `engine_log()` — журнал с начала работы. Профиль окно выбирает само по игре в фокусе (папка `profiles`), как `aikm.cmd`. Впереди: `list_profiles()`, ручной выбор профиля, `set_hidden(bool)`.
 
 ## Агент (этап 4)
 

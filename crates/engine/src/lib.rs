@@ -7,6 +7,7 @@ pub mod gyro;
 pub mod keys;
 pub mod output;
 pub mod profile;
+pub mod runner;
 
 pub use engine::{Engine, Snapshot};
 pub use keys::Output;

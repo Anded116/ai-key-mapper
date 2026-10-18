@@ -1,6 +1,6 @@
 /** Событие `state` движка, см. «Контракт движок → UI» в docs/architecture.md. */
 export interface PadState {
-  pad: { model: string; bus: string; battery: number }
+  pad: { model: string; bus: string; battery: number | null } | null
   buttons: string[]
   sticks: { left: [number, number]; right: [number, number] }
   triggers: { l2: number; r2: number }
@@ -10,6 +10,7 @@ export interface PadState {
   outputs: string[]
   profile: string | null
   weapons: { current: number | null; next_double: string | null }
+  engine: { focused: boolean; paused: boolean; hidden: boolean; calibrating: boolean; movement: string | null }
 }
 
 /** Строка ленты чата из события `agent`. */

@@ -24,6 +24,8 @@ pub struct Buttons {
     layers: Vec<Btn>,
     /// First-press time per (button, layer) for `press` + `double`.
     first_press: HashMap<(Btn, Option<Btn>), f64>,
+    /// Key of the last weapon picked through a pair (press or next).
+    last_pair: Option<Output>,
     /// Per layer: the paired button whose `next` the following press gives.
     toggle: HashMap<Option<Btn>, Btn>,
     /// Taps waiting out the double-press window: fire time and keys.
@@ -38,6 +40,10 @@ impl Buttons {
     }
 
     /// The paired button whose second weapon the next press in `layer` gives.
+    pub fn last_weapon(&self) -> Option<Output> {
+        self.last_pair
+    }
+
     pub fn next_pair(&self, layer: Option<Btn>) -> Option<Btn> {
         self.toggle.get(&layer).copied()
     }
@@ -85,6 +91,9 @@ impl Buttons {
         }
         for o in &immediate {
             held.down(*o, sink);
+        }
+        if !binding.next.is_empty() {
+            self.last_pair = immediate.first().copied();
         }
         self.active.insert(b, Active { binding, layer, started: now, immediate, hold_fired: false });
     }

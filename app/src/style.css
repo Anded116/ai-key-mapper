@@ -92,6 +92,21 @@ html, body {
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
 .card h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 
+.engine-state { font-size: 15px; font-weight: 600; }
+.engine-state.on { color: var(--ok); }
+.engine-state.off { color: var(--muted); }
+.engine-state.warn { color: var(--layer); }
+.engine-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.engine-tags:empty { display: none; }
+.tag { padding: 1px 7px; border-radius: 5px; background: var(--panel-2); color: var(--muted); font-size: 12px; }
+.engine-actions { display: flex; gap: 6px; margin-top: 8px; }
+.engine-actions button { flex: 1; }
+.engine-actions button.active { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.log { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; color: var(--muted); }
+.log:empty { display: none; }
+.log li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log li + li { margin-top: 2px; }
+
 .layer { font-size: 18px; font-weight: 600; }
 .layer.active { color: var(--layer); }
 
