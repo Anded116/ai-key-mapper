@@ -1,0 +1,48 @@
+# This configuration file will map a virtual xbox controller for each connected controller.
+# There is a separate configuration file if you want to use joycons sideways as a xbox controller
+
+RESET_MAPPINGS
+
+REAL_WORLD_CALIBRATION = 720		# Change if making a full circle with right stick doesn't move character camera in the same way.
+IN_GAME_SENS = 50					# Should be same as in game
+
+VIRTUAL_CONTROLLER = XBOX
+
+UP = X_UP
+DOWN = X_DOWN
+LEFT = X_LEFT
+RIGHT = X_RIGHT
+L = X_LB
+R = X_RB
+W = X_X
+S = X_A
+N = X_Y
+E = X_B
+L3 = X_LS
+R3 = X_RS
+- = X_BACK
++ = X_START
+HOME = X_GUIDE
+ZL_MODE = X_LT
+ZR_MODE = X_RT
+LEFT_STICK_MODE = LEFT_STICK
+
+GYRO_OFF = TOUCH
+
+# Aim settings
+# Gyro sens of 1 means you'll turn the same amount in game as in the real world
+MIN_GYRO_SENS = 1.3
+MAX_GYRO_SENS = 2.5
+# Gyro thresholds are in degrees per second
+MIN_GYRO_THRESHOLD = 0
+MAX_GYRO_THRESHOLD = 75
+
+# Stick sensitivity is in degrees per second
+STICK_SENS = 360
+STICK_POWER = 4
+STICK_ACCELERATION_RATE = 1
+STICK_ACCELERATION_CAP = 2
+RIGHT_STICK_MODE = FLICK
+#RIGHT_STICK_MODE = AIM
+
+

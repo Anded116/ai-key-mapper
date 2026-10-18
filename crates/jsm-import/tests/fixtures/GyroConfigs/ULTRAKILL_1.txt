@@ -1,0 +1,60 @@
+# Advanced weapon selection ULTRAKILL configuration
+RESET_MAPPINGS
+
+REAL_WORLD_CALIBRATION = 200
+IN_GAME_SENS = 50
+
+LLEFT = A
+LRIGHT = D
+LUP = W
+LDOWN = S
+
+LEFT = A           	 
+RIGHT = D           
+UP = W             			
+DOWN = S     				
+
+GYRO_OFF = L3    			# Gyro Off
+
+#ZR = 						# Used for chorded wepon swith
+ZL = LSHIFT         		# Dash
+
+R = LMOUSE             		# Shoot
+ZR,R = RMOUSE				# Chord alt shoot
+L =  SPACE       			# Jump
+
+N = RMOUSE					# Alt shoot
+W = F						# Melee
+E = LCONTROL       			# Slam/clide
+S = R         				# use
+
+CAPTURE = G					# Swap arm
+R3 = G             			# ?            
++ = ESC          			# Pause
+- = F5          			# Quick Save
+
+#L3 =         				# Used for gyro off
+#R3 = G             		# -        
+    
++ = ESC          			# Pause
+- = TAB          			# Stats
+
+ZR,- = F5          			# Quick Save
+ZR,+ = F9					# load
+
+ZR,N = 4
+ZR,E = 2
+ZR,S = 3
+ZR,W = 1
+
+# Include mouse settings
+GyroConfigs/_3Dmouse.txt
+
+#weapns
+#1 - Axe 
+#2 - Staff of the Azure Orb
+#3 - Whisper's Edge
+#4 - Voltride
+#5 - Celestial Claw
+#6 - Star of Torment
+#7 - Aeturnum

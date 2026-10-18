@@ -1,0 +1,12 @@
+[package]
+name = "jsm-import"
+version = "0.1.0"
+edition = "2021"
+description = "Converts JoyShockMapper .txt presets into aikm TOML profiles"
+
+[dependencies]
+engine = { path = "../engine" }
+
+[[bin]]
+name = "aikm-import"
+path = "src/main.rs"

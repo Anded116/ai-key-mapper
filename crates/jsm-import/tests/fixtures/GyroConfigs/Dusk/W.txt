@@ -1,0 +1,4 @@
+ZR,N = 6\ "GyroConfigs/Dusk/N.txt"\
+ZR,E = 8\ "GyroConfigs/Dusk/E.txt"\
+ZR,S = 3\ "GyroConfigs/Dusk/S.txt"\
+ZR,W = 2\ "GyroConfigs/Dusk/NEUTRAL.txt"\

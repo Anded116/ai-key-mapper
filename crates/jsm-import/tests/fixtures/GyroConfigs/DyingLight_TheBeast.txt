@@ -1,0 +1,88 @@
+# Dying light 2 configuration
+RESET_MAPPINGS
+
+REAL_WORLD_CALIBRATION = 400		# Change if making a full circle with right stick doesn't move character camera in the same way.
+IN_GAME_SENS = 50					# Should be same as in game
+
+##### LEFT ANALOG STICK
+LLEFT = Q							# Menu tabs and ammo swap
+LRIGHT = E							# Menu tabs and ammo swap
+LUP = V								# car camera
+#LDOWN = Z+X							
+
+##### STICK CLICK
+L3 = ENTER        					# Enter
+R3 = Q             					# Survivor Sense   
+
+L3+R3 = Z+X							# BEAST MODE   
+
+##### D-PAD (movement)
+LEFT = A           	 				# Movement
+RIGHT = D           
+UP = W             			
+DOWN = S     						# Movement end
+
+##### TRIGGERS AND BUMPERS
+ZR = LSHIFT							# chroding
+ZL = RMOUSE							# Block/aim
+R = LMOUSE             				# Shoot/attack
+L =  SPACE       					# Jump
+
+##### FACE BUTTONS (YBAX)
+N = MMOUSE								# Use Consumable
+E = C       						# Crouch
+S = E 								# Kick
+W = F 								# Use
+W,W = Z 							# Glider(?)
+
+##### CHORDED PRESSES WITH RIGHT TRIGGER
+ZR,N = 2							# Cycle Consumables
+ZR,E = 3							# Cycle Weapons
+ZR,S = T 							# Flashlight        
+ZR,W = 1							# Cycle Equipment
+
+##### CHORDED PRESSES WITH SELECT BUTTON
+#-,N = 2							# Cycle Consumables
+#-,E = 3							# Cycle Equipment
+#-,S = 4 							# Flashlight        
+#-,W = 1							# Cycle Weapons
+
+
+
+##### START AND SELECT
++ = I ESC 							# invenory       
+- = N M								# clock, map
+#- = ESC          					# menu
+
+#############
+TOUCHPAD_MODE = GRID_AND_STICK
+GRID_SIZE = 2 1   					# split the pad in two buttons, left and right
+GYRO_OFF = TOUCH    				# disable the gyro when I touch
+
+# Bind on clicks
+
+CAPTURE = NONE   					# Chorded with touch buttons
+T1,CAPTURE = R  					# reload? repair equipment
+T2,CAPTURE = H 				# Use equipment	
+#############
+
+#TUTORIAL
+#PS = 								# --- 						(Ps button)
+#CAPTURE =          				# ---						(Touchpad click)
+#TOUCH = 							# --- 						(Touchpad touch)
+#Use W = R E    		    		# if you want E on hold button
+
+#https://github.com/Electronicks/JoyShockMapper#commands - good list of commands and inputs
+
+# Include mouse settings
+# If you are not happy with sensitivity change it in that file.
+GyroConfigs/_3Dmouse.txt
+
+
+
+#To map:
+#alt - hook
+
+#B - binoculars
+#CapsLock - spin attack
+#mic button

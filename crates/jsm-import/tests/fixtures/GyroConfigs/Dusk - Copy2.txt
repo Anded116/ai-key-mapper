@@ -1,0 +1,51 @@
+# Configuration for Dusk with flick stick. Controls are basically the same as the controller. Makes more sense
+#
+# (Any line that starts with # is ignored by JoyShockMapper)
+# First, reset to defaults so we don't have to set values we don't care about
+RESET_MAPPINGS
+
+# Calibrate. Flick stick relies on good calibration; gyro and stick sens make more sens with it, too
+#REAL_WORLD_CALIBRATION = 2.85
+REAL_WORLD_CALIBRATION = 2.8649
+IN_GAME_SENS = 0.1
+# Please set IN_GAME_SENS to your in game mouse speed setting whenever you change it
+
+# Button mappings
+LLEFT = S
+LRIGHT = F
+LUP = E
+LDOWN = D
+
+LEFT = SCROLLUP           	# Previous weapon
+RIGHT = SCROLLDOWN          # Next weapon
+#UP =              			# 
+#DOWN =      				# 
+
+GYRO_OFF = DOWN    			# Gyro Off
+
+#ZR = SPACE					# NOT WORKING/Brings menu for some reason
+ZL = RMOUSE         		# Zoom/alt fireq
+
+R = LMOUSE             		# Shoot
+L =  SPACE       			# jump
+
+N = LSHIFT					# walk
+W = T						# Roll weapon
+E = LCONTROL       			# crouch
+S = R         				# Use
+
+GyroConfigs/Dusk/NEUTRAL.txt
+
+#L3 =         
+R3 = G             			# Flashlight            
++ = ESC          			# pause
+- = F6          			# Quick Save
+
+#UP,N= 5           # Chorded Press for Syringe. To use chords just hold the First button then tap the second.
+#UP,W= 7           # Chorded Press for Shield Cells
+#UP,S= 8           # Chorded Press for Shield Battery
+#UP,E= 6           # Chorded Press for Medkit
+#UP,ZR= 9          # Chorded Press For Phoenix kit
+
+# Include mouse settings
+GyroConfigs/_3Dmouse.txt

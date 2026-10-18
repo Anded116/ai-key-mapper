@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["demo", "crates/dualsense", "crates/engine", "crates/hidhide", "crates/hidhide-cli"]
+members = ["demo", "crates/dualsense", "crates/engine", "crates/hidhide", "crates/hidhide-cli", "crates/jsm-import"]
 
 [profile.dev.package."*"]
 opt-level = 3

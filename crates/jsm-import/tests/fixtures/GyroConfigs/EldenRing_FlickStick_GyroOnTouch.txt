@@ -1,0 +1,40 @@
+# Elden Ring Flick stick configuration
+RESET_MAPPINGS
+
+REAL_WORLD_CALIBRATION = 400		# Change if making a full circle with right stick doesn't move character camera in the same way.
+IN_GAME_SENS = 50					# Should be same as in game
+
+
+
+R = LMOUSE     
+CALIBRATE = L
+##### START AND SELECT
++ = ESC G          					# Pause, Map
+- = 5 6
+
+#############
+TOUCHPAD_MODE = GRID_AND_STICK
+GRID_SIZE = 2 2   					# split the pad in 4 buttons, 2 left and 2 right
+GYRO_ON = TOUCH    				# disable the gyro when I touch
+
+# Bind on clicks
+
+CAPTURE = NONE   					# Chorded with touch buttons
+T1,CAPTURE = 1  					# 
+T2,CAPTURE = 2 						#
+T3,CAPTURE = 3						#
+T4,CAPTURE = 4						#
+#############
+
+#TUTORIAL
+#PS = 								# --- 						(Ps button)
+#CAPTURE =          				# ---						(Touchpad click)
+#TOUCH = 							# --- 						(Touchpad touch)
+#Use W = R E    		    		# if you want E on hold button
+
+#https://github.com/Electronicks/JoyShockMapper#commands - good list of commands and inputs
+
+# Include mouse settings
+# If you are not happy with sensitivity change it in that file.
+GyroConfigs/_3Dmouse.txt		
+
