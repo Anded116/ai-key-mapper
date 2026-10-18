@@ -159,7 +159,7 @@ function drawTop(s: PadState) {
   put('engine-state', state)
   $('status-dot').dataset.tone = tone
 
-  const tags = [e.movement ? MOVEMENT[e.movement] ?? e.movement : '', e.hidden ? 'Геймпад скрыт от игры' : '', e.calibrating ? 'Калибровка гироскопа' : '']
+  const tags = [e.vehicle ? 'Режим техники' : e.movement ? MOVEMENT[e.movement] ?? e.movement : '', e.hidden ? 'Геймпад скрыт от игры' : '', e.calibrating ? 'Калибровка гироскопа' : '']
   put('tags', tags.filter(Boolean).map((t) => `<span class="tag-pill">${t}</span>`).join(''), true)
 
   const p = s.pad
@@ -201,6 +201,25 @@ function drawPad(s: PadState) {
 }
 
 $('pause').addEventListener('click', () => invoke('set_paused', { paused: !paused }))
+
+// Автозапуск с Windows: свёрнутым в трей. В dev-сборке недоступен — ей нужен vite.
+interface Autostart { enabled: boolean; unavailable: string | null }
+const showAutostart = (a: Autostart) => {
+  const box = $<HTMLInputElement>('autostart')
+  box.checked = a.enabled
+  box.disabled = Boolean(a.unavailable)
+  if (a.unavailable) $('autostart-hint').textContent = a.unavailable
+}
+invoke<Autostart>('autostart').then(showAutostart)
+$('autostart').addEventListener('change', async () => {
+  const want = $<HTMLInputElement>('autostart').checked
+  try {
+    showAutostart(await invoke<Autostart>('set_autostart', { enabled: want }))
+  } catch (err) {
+    $('autostart-hint').textContent = String(err)
+    $<HTMLInputElement>('autostart').checked = !want
+  }
+})
 $('calibrate').addEventListener('click', () => invoke('calibrate'))
 
 // Журнал движка: в подвале последняя строка, по клику — последние десять.

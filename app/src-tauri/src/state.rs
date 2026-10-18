@@ -84,6 +84,8 @@ pub struct EngineInfo {
     pub calibrating: bool,
     /// Идёт проверочный поворот на 360°.
     pub turning: bool,
+    /// Режим техники: стик и курки уходят в виртуальный Xbox-геймпад.
+    pub vehicle: bool,
     /// `hybrid` | `wasd`
     pub movement: Option<String>,
 }
@@ -123,6 +125,7 @@ impl From<&Frame> for State {
             };
             s.engine.calibrating = snap.gyro_calibrating;
             s.engine.turning = snap.turning;
+            s.engine.vehicle = snap.vehicle;
             s.engine.movement = Some(format!("{:?}", snap.movement).to_lowercase());
         }
         s

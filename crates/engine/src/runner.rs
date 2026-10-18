@@ -14,7 +14,8 @@ use hidapi::HidApi;
 use crate::output::{RecordSink, Sink, WinSink};
 use crate::profile::MoveMode;
 use crate::steam;
-use crate::{Engine, Output, Profile, Snapshot};
+use crate::{Engine, Output, Profile, Snapshot, VirtualPad};
+use vigem_client::{Client, TargetId, XGamepad, Xbox360Wired};
 
 pub struct Config {
     /// A profile file, or a folder: then the profile is picked by the window in focus.
@@ -27,6 +28,8 @@ pub struct Config {
 
 pub enum Command {
     SetPaused(bool),
+    /// Like PS + Create: pause if running, resume if paused.
+    TogglePause,
     /// Like a tap on PS: start gyro calibration, or finish the running one.
     ToggleCalibration,
     /// Turn the camera by this many degrees once the game is in focus (a second after it gets
@@ -312,6 +315,10 @@ struct Loop {
     profile_rev: u32,
     /// Armed calibration turn: degrees, and when to start once the game is in focus.
     turn: Option<(f32, Option<Instant>)>,
+    /// Virtual Xbox pad of vehicle mode; plugged in only while the mode is on.
+    vpad: Option<Xbox360Wired<Client>>,
+    /// ViGEmBus refused once: do not retry until the mode is switched off and on again.
+    vpad_failed: bool,
 }
 
 impl Loop {
@@ -361,6 +368,8 @@ impl Loop {
             hide_game: None,
             profile_rev: 0,
             turn: None,
+            vpad: None,
+            vpad_failed: false,
         }
     }
 
@@ -385,6 +394,7 @@ impl Loop {
             match rx.try_recv() {
                 Ok(Command::Stop) | Err(TryRecvError::Disconnected) => break,
                 Ok(Command::SetPaused(p)) => self.set_paused(p),
+                Ok(Command::TogglePause) => self.set_paused(!self.paused),
                 Ok(Command::ToggleCalibration) => {
                     if let Some(e) = &mut self.engine {
                         e.toggle_calibration(start.elapsed().as_secs_f64());
@@ -533,6 +543,48 @@ impl Loop {
         }
     }
 
+/// Vehicle mode: plug the virtual pad in when it starts, unplug when it ends. Out of the game or on
+    /// pause the pad stays plugged in but centred, so the game does not see a controller drop out.
+    fn follow_vehicle(&mut self, state: &State) {
+        let report = self.engine.as_ref().and_then(|e| e.virtual_pad(state));
+        if report.is_none() {
+            self.vpad_failed = false;
+            if self.vpad.take().is_some() {
+                self.log("режим техники выключен: виртуальный геймпад отключён");
+            }
+            return;
+        }
+        if self.vpad.is_none() && !self.vpad_failed {
+            let plugged = Client::connect().map_err(|e| e.to_string()).and_then(|client| {
+                let mut pad = Xbox360Wired::new(client, TargetId::XBOX360_WIRED);
+                pad.plugin().map_err(|e| e.to_string())?;
+                pad.wait_ready().map_err(|e| e.to_string())?;
+                Ok(pad)
+            });
+            match plugged {
+                Ok(pad) => {
+                    self.vpad = Some(pad);
+                    self.log("режим техники: левый стик и курки — виртуальный Xbox-геймпад");
+                }
+                Err(e) => {
+                    self.vpad_failed = true;
+                    self.log(&format!("режим техники: виртуальный геймпад не подключился ({e}) — нужен драйвер ViGEmBus"));
+                }
+            }
+        }
+        let Some(pad) = &mut self.vpad else { return };
+        let live = if self.focused && !self.paused { report.unwrap_or_default() } else { VirtualPad::default() };
+        let axis = |v: f32| (v.clamp(-1.0, 1.0) * 32767.0) as i16;
+        let trigger = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u8;
+        let _ = pad.update(&XGamepad {
+            thumb_lx: axis(live.left[0]),
+            thumb_ly: axis(live.left[1]),
+            left_trigger: trigger(live.left_trigger),
+            right_trigger: trigger(live.right_trigger),
+            ..XGamepad::default()
+        });
+    }
+
     fn follow_hiding(&mut self) {
         let engine_wants = self.engine.as_ref().is_some_and(|e| e.wants_hidden());
         let wants = !self.config.dry
@@ -595,6 +647,7 @@ impl Loop {
                         e.update(now, &state, &mut self.out);
                     }
                 }
+                self.follow_vehicle(&state);
             }
             Some(Ok(None)) => {
                 if let (Some(e), true) = (&mut self.engine, self.focused) {

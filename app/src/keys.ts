@@ -19,7 +19,7 @@ const WORD: Record<string, string> = {
   MouseLeft: 'ЛКМ', MouseRight: 'ПКМ', MouseMiddle: 'СКМ', MouseBack: 'М4', MouseForward: 'М5',
   WheelUp: 'Колесо ↑', WheelDown: 'Колесо ↓', Up: '↑', Down: '↓', Left: '←', Right: '→',
   Home: 'Home', End: 'End', PageUp: 'PgUp', PageDown: 'PgDn', Insert: 'Ins', Delete: 'Del',
-  ToggleMovement: 'WASD ↔ стик',
+  ToggleMovement: 'WASD ↔ стик', ToggleVehicle: 'техника',
 }
 
 /** Названия на английском — для игр, которые пишут подсказки по-английски. */
@@ -33,6 +33,7 @@ const HINT: Record<string, string> = {
   MouseLeft: 'левая кнопка мыши', MouseRight: 'правая кнопка мыши', MouseMiddle: 'средняя кнопка мыши (колесо)',
   MouseBack: 'боковая кнопка мыши «назад»', MouseForward: 'боковая кнопка мыши «вперёд»',
   ToggleMovement: 'левый стик: гибрид ↔ WASD',
+  ToggleVehicle: 'режим техники: левый стик и курки — виртуальный Xbox-геймпад',
 }
 
 export interface KeyFace {

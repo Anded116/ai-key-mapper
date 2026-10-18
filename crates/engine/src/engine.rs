@@ -39,6 +39,14 @@ const CAL_TAP_S: f64 = 0.3;
 /// Calibration turn speed, deg/s: a full circle in half a second, quick but not a flick.
 const TURN_SPEED: f32 = 720.0;
 
+/// Virtual Xbox pad report in vehicle mode: stick -1..1 with +Y up, triggers 0..1.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct VirtualPad {
+    pub left: [f32; 2],
+    pub left_trigger: f32,
+    pub right_trigger: f32,
+}
+
 /// What the UI shows about the engine.
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -50,6 +58,8 @@ pub struct Snapshot {
     pub flick_active: bool,
     /// A calibration turn is under way.
     pub turning: bool,
+    /// Vehicle mode is on.
+    pub vehicle: bool,
     /// Paired button (in the weapon layer) whose second slot the next press gives.
     pub next_pair: Option<Btn>,
     pub movement: MoveMode,
@@ -97,6 +107,8 @@ pub struct Engine {
     movement_override: Option<MoveMode>,
     /// Degrees of the calibration turn still to send.
     turn_left: f32,
+    /// Vehicle mode (ToggleVehicle): left stick and triggers go to the virtual pad.
+    vehicle: bool,
 }
 
 impl Engine {
@@ -119,6 +131,7 @@ impl Engine {
             cal_ending_press: false,
             movement_override: None,
             turn_left: 0.0,
+            vehicle: false,
         }
     }
 
@@ -147,6 +160,7 @@ impl Engine {
             gyro_bias: self.gyro.bias(),
             flick_active: self.flick.active(),
             turning: self.turn_left > 0.0,
+            vehicle: self.vehicle,
             next_pair: self.next_pair(),
             movement: self.movement_mode(),
             weapon: self.buttons.last_weapon(),
@@ -156,7 +170,8 @@ impl Engine {
     fn inputs(&self, s: &State) -> BTreeSet<Btn> {
         let trigger_threshold = self.profile.trigger_threshold;
         let mut set: BTreeSet<Btn> = PAD_BITS.iter().filter(|(b, _)| s.buttons.contains(*b)).map(|(_, x)| *x).collect();
-        if s.l2 > trigger_threshold {
+        // in a vehicle L2 is the brake, not aim; R2 stays: it is the layer key that leaves the mode
+        if s.l2 > trigger_threshold && !self.vehicle {
             set.insert(Btn::L2);
         }
         if s.r2 > trigger_threshold {
@@ -215,20 +230,37 @@ impl Engine {
                         MoveMode::Wasd => MoveMode::Hybrid,
                     };
                     self.movement_override = Some(next);
-                    // Leaving WASD must not leave a movement key held.
-                    let keys = self.profile.movement.keys;
-                    for (i, key) in keys.iter().enumerate() {
-                        set(&mut self.held, &mut self.move_held[i], false, *key, sink);
-                    }
-                    if let Some(k) = self.profile.movement.walk {
-                        set(&mut self.held, &mut self.walk_held, false, k, sink);
-                    }
-                    if let Some(k) = self.profile.movement.sprint {
-                        set(&mut self.held, &mut self.sprint_held, false, k, sink);
-                    }
+                    self.release_movement(sink);
+                }
+                Action::ToggleVehicle => {
+                    self.vehicle = !self.vehicle;
+                    self.release_movement(sink);
                 }
             }
         }
+    }
+
+    /// Leaving WASD (or entering a vehicle) must not leave a movement key held.
+    fn release_movement(&mut self, sink: &mut dyn Sink) {
+        let keys = self.profile.movement.keys;
+        for (i, key) in keys.iter().enumerate() {
+            set(&mut self.held, &mut self.move_held[i], false, *key, sink);
+        }
+        if let Some(k) = self.profile.movement.walk {
+            set(&mut self.held, &mut self.walk_held, false, k, sink);
+        }
+        if let Some(k) = self.profile.movement.sprint {
+            set(&mut self.held, &mut self.sprint_held, false, k, sink);
+        }
+    }
+
+    /// What the virtual Xbox pad should report: `None` outside vehicle mode (no virtual pad at all).
+    pub fn virtual_pad(&self, s: &State) -> Option<VirtualPad> {
+        if !self.vehicle {
+            return None;
+        }
+        let ([x, y], _) = apply_deadzone(s.left, self.profile.movement.deadzone);
+        Some(VirtualPad { left: [x, y], left_trigger: s.l2, right_trigger: s.r2 })
     }
 
     /// Calibration button as in JSM: a tap starts calibrating and the next tap finishes it;
@@ -365,7 +397,7 @@ impl Engine {
     /// (±63.4° sectors, diagonals press two keys); rings split at a rescaled length of `ring`.
     fn left_stick(&mut self, raw: [f32; 2], sink: &mut dyn Sink) {
         let m = &self.profile.movement;
-        if self.movement_mode() != MoveMode::Wasd {
+        if self.movement_mode() != MoveMode::Wasd || self.vehicle {
             return;
         }
         let ([x, y], len) = apply_deadzone(raw, m.deadzone);
@@ -444,6 +476,31 @@ mod tests {
         }
         assert!(!e.snapshot().turning);
         assert_eq!(sink.moved.0, 1800, "360° × 10 / 2 counts");
+    }
+
+    #[test]
+    fn vehicle_mode_hands_stick_and_triggers_to_the_virtual_pad() {
+        let p = Profile::parse("[movement]\nmode = \"wasd\"\n[buttons]\nl2 = \"MouseRight\"\nmic = \"ToggleVehicle\"").unwrap();
+        let mut e = Engine::new(p);
+        let mut sink = RecordSink::default();
+        let mut s = state(PadButtons::NONE, 0);
+        s.left = [0.0, 1.0];
+        e.update(0.0, &s, &mut sink);
+        assert_eq!(names(&mut sink), ["+W"]);
+        assert!(e.virtual_pad(&s).is_none());
+        let mut s = state(PadButtons::MIC, 5000);
+        s.left = [0.0, 1.0];
+        e.update(0.005, &s, &mut sink);
+        assert_eq!(names(&mut sink), ["-W"], "entering the vehicle lets go of WASD");
+        let mut s = state(PadButtons::NONE, 10_000);
+        s.left = [0.0, 1.0];
+        s.l2 = 0.6;
+        s.r2 = 0.8;
+        e.update(0.01, &s, &mut sink);
+        assert_eq!(names(&mut sink), Vec::<String>::new(), "no WASD and no aim click while driving");
+        let pad = e.virtual_pad(&s).unwrap();
+        assert!(pad.left[1] > 0.9 && pad.left_trigger == 0.6 && pad.right_trigger == 0.8);
+        assert!(e.snapshot().vehicle);
     }
 
     #[test]

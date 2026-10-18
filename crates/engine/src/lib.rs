@@ -10,6 +10,6 @@ pub mod profile;
 pub mod runner;
 pub mod steam;
 
-pub use engine::{Engine, Snapshot};
+pub use engine::{Engine, Snapshot, VirtualPad};
 pub use keys::Output;
 pub use profile::{Btn, Profile, ProfileError};

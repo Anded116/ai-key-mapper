@@ -18,6 +18,8 @@ pub enum Output {
 pub enum Action {
     /// Switch the left stick between hybrid (game reads it) and WASD.
     ToggleMovement,
+    /// Vehicle mode: the left stick and both triggers go to a virtual Xbox pad (analog driving).
+    ToggleVehicle,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -140,6 +142,7 @@ const NAMES: &[(&str, Output)] = &[
     ("WheelDown", Output::WheelDown),
     ("ScrollDown", Output::WheelDown),
     ("ToggleMovement", Output::Action(Action::ToggleMovement)),
+    ("ToggleVehicle", Output::Action(Action::ToggleVehicle)),
 ];
 
 impl Output {

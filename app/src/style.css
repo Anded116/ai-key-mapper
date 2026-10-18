@@ -463,3 +463,16 @@ textarea:focus { outline: none; border-color: var(--accent-line); }
 .turn-custom input { width: 64px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); font: inherit; user-select: text; }
 .turn-box .link { align-self: flex-start; color: var(--muted); font-size: 12px; }
 .turn-box .link:hover { color: var(--text); }
+
+/* ---------- автозапуск ---------- */
+
+.side-foot { padding-top: 10px; border-top: 1px solid var(--line); }
+.switch-row { display: flex; align-items: center; gap: 10px; padding: 0 4px; color: var(--text-2); font-size: 12.5px; cursor: pointer; }
+.switch-row input { position: absolute; opacity: 0; pointer-events: none; }
+.switch { position: relative; flex: none; width: 30px; height: 17px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line-2); transition: background 150ms; }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); transition: transform 150ms, background 150ms; }
+.switch-row input:checked + .switch { background: var(--accent-bg); border-color: var(--accent-line); }
+.switch-row input:checked + .switch::after { transform: translateX(13px); background: var(--accent); }
+.switch-row input:disabled ~ span { opacity: 0.5; }
+.switch-row input:focus-visible + .switch { outline: 1px solid var(--accent-line); outline-offset: 2px; }
+.side-foot .side-hint { margin-top: 6px; }

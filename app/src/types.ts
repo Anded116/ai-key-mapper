@@ -10,7 +10,7 @@ export interface PadState {
   outputs: string[]
   profile: string | null
   weapons: { current: number | null; next_double: string | null }
-  engine: { focused: boolean; paused: boolean; hidden: boolean; calibrating: boolean; turning: boolean; movement: string | null }
+  engine: { focused: boolean; paused: boolean; hidden: boolean; calibrating: boolean; turning: boolean; vehicle: boolean; movement: string | null }
 }
 
 /** Строка ленты чата из события `agent`. */
