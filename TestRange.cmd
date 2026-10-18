@@ -3,6 +3,15 @@ chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
+rem Running copies lock their .exe files: the build would fail and the old version would start.
+for %%P in (testrange.exe aikm.exe) do (
+  tasklist /fi "imagename eq %%P" | find /i "%%P" >nul
+  if not errorlevel 1 (
+    echo Уже запущен %%P. Закрой TestRange и окно aikm, потом запусти снова.
+    goto :fail
+  )
+)
+
 where cargo >nul 2>nul
 if not errorlevel 1 (
   echo Сборка TestRange и движка...
