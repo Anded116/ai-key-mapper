@@ -20,6 +20,8 @@ const SLEEVE: Color = Color::new(0.2, 0.25, 0.32, 1.0);
 
 const HIP: Vec3 = Vec3::new(0.17, -0.17, -0.42);
 pub const SWING_TIME: f32 = 0.42;
+/// Vertical FOV of the viewmodel camera, degrees.
+pub const VIEWMODEL_FOV: f32 = 68.0;
 pub const SWING_WINDUP: f32 = 0.22;
 pub const SWING_STRIKE_END: f32 = 0.55;
 const THROW_TIME: f32 = 0.45;
@@ -225,8 +227,8 @@ fn draw_model(model: &Model, m: Mat4, mag_drop: f32, hand: bool, ads: f32) {
 }
 
 impl Game {
-    /// Draws the first-person weapon in camera space (camera at origin looking down -Z).
-    pub fn draw_viewmodel(&self, now: f64) {
+    /// Weapon transform in viewmodel camera space and the magazine drop of the reload.
+    fn weapon_pose(&self, now: f64) -> (Mat4, f32) {
         let a = &self.arms;
         let idx = a.cur;
         let model = MODELS[idx];
@@ -297,9 +299,21 @@ impl Game {
             roll += 0.35 * k;
         }
 
+        let m = Mat4::from_translation(pos) * Mat4::from_euler(EulerRot::YXZ, yaw, pitch, roll);
+        (m, mag_drop)
+    }
+
+    /// Draws the first-person weapon in camera space (camera at origin looking down -Z).
+    pub fn draw_viewmodel(&self, now: f64) {
+        let a = &self.arms;
+        let model = MODELS[a.cur];
+        let swing_q = ((now - a.swing_at) as f32 / SWING_TIME).clamp(0.0, 1.0);
+        let swinging = swing_q < 1.0;
+        let throw_q = ((now - a.throw_at) as f32 / THROW_TIME).clamp(0.0, 1.0);
+        let is_knife = matches!(a.def().kind, Kind::Melee { .. });
+        let (m, mag_drop) = self.weapon_pose(now);
         if !(is_knife && swinging) {
-            let m = Mat4::from_translation(pos) * Mat4::from_euler(EulerRot::YXZ, yaw, pitch, roll);
-            draw_model(model, m, mag_drop, true, ads);
+            draw_model(model, m, mag_drop, true, smooth(a.ads));
             if now < self.fx.muzzle_until {
                 let mz = m.transform_point3(model.muzzle);
                 draw_sphere(mz, 0.045, None, Color::new(1.0, 0.85, 0.4, 0.95));
@@ -309,21 +323,37 @@ impl Game {
         if swinging {
             draw_swing(swing_q);
         }
-        if throwing && throw_q < 0.6 {
+        if throw_q < 0.6 {
             let k = smooth(throw_q / 0.6);
             let gp = vec3(-0.18, -0.24, -0.32).lerp(vec3(-0.04, 0.02, -0.75), k);
             draw_box_m(&Mat4::from_translation(gp), vec3(0.06, 0.08, 0.06), Color::new(0.25, 0.35, 0.2, 1.0));
         }
+    }
+
+    /// World point that sits on screen where the viewmodel's muzzle is drawn, so tracers
+    /// leave the visible barrel. The viewmodel has its own FOV, hence the projection round trip.
+    pub fn muzzle_world(&self, now: f64) -> Vec3 {
+        let (m, _) = self.weapon_pose(now);
+        let p = m.transform_point3(MODELS[self.arms.cur].muzzle);
+        let aspect = screen_width() / screen_height();
+        let vm_tan = (VIEWMODEL_FOV.to_radians() / 2.0).tan();
+        let ndc = vec2(p.x / -p.z / (vm_tan * aspect), p.y / -p.z / vm_tan);
+        let world_tan = (self.vfov / 2.0).tan();
+        let fwd = self.p.look_dir();
+        let right = fwd.cross(Vec3::Y).normalize_or(Vec3::X);
+        let up = right.cross(fwd);
+        let dir = (fwd + right * ndc.x * world_tan * aspect + up * ndc.y * world_tan).normalize();
+        self.p.eye() + dir * 0.8
     }
 }
 
 /// Swing keyframes: (phase, position, yaw/pitch/roll). Wind-up raises the blade at the
 /// upper right, the strike cuts through the centre to the lower left, then it leaves the frame.
 const SWING_KEYS: [(f32, Vec3, Vec3); 4] = [
-    (0.0, Vec3::new(0.3, -0.4, -0.4), Vec3::new(0.4, 0.3, -0.8)),
-    (SWING_WINDUP, Vec3::new(0.26, 0.06, -0.4), Vec3::new(0.5, 1.0, -0.9)),
-    (SWING_STRIKE_END, Vec3::new(-0.2, -0.22, -0.46), Vec3::new(-0.6, -0.4, -0.2)),
-    (1.0, Vec3::new(-0.26, -0.55, -0.42), Vec3::new(-0.7, -0.6, 0.0)),
+    (0.0, Vec3::new(0.3, -0.4, -0.4), Vec3::new(-0.5, 0.3, -0.6)),
+    (SWING_WINDUP, Vec3::new(0.26, 0.05, -0.42), Vec3::new(-0.7, 0.9, -1.2)),
+    (SWING_STRIKE_END, Vec3::new(-0.18, -0.2, -0.48), Vec3::new(0.8, -0.5, -0.4)),
+    (1.0, Vec3::new(-0.24, -0.5, -0.44), Vec3::new(0.9, -0.6, -0.2)),
 ];
 
 fn swing_matrix(q: f32) -> Mat4 {

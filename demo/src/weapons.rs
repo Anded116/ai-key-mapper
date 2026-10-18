@@ -68,6 +68,9 @@ pub const DEFS: [Def; 8] = [
 pub const SWITCH_TIME: f64 = 0.25;
 const GRENADE_COOLDOWN: f64 = 0.8;
 const MELEE_COOLDOWN: f64 = 0.5;
+/// Tracer flight speed (m/s) and streak length (m): slow enough to see where it goes.
+const TRACER_SPEED: f32 = 350.0;
+const TRACER_LEN: f32 = 5.0;
 /// From the button press to the blade crossing the centre of the screen.
 const STRIKE_DELAY: f64 = 0.12;
 
@@ -111,6 +114,7 @@ pub struct Projectile {
 }
 
 pub struct Fx {
+    /// Bullet streaks: from, to, fire time.
     pub tracers: Vec<(Vec3, Vec3, f64)>,
     pub impacts: Vec<(Vec3, f64)>,
     pub explosions: Vec<(Vec3, f32, f64)>,
@@ -216,7 +220,7 @@ impl Arsenal {
     }
 
     /// Fires the current weapon. Returns false when nothing was fired.
-    pub fn fire(&mut self, now: f64, eye: Vec3, dir: Vec3, spread: f32, world: &mut World, fx: &mut Fx, stats: &mut Stats) -> bool {
+    pub fn fire(&mut self, now: f64, eye: Vec3, dir: Vec3, muzzle: Vec3, spread: f32, world: &mut World, fx: &mut Fx, stats: &mut Stats) -> bool {
         if self.busy(now) || now < self.next_fire {
             return false;
         }
@@ -242,7 +246,7 @@ impl Arsenal {
                 let mut any = false;
                 for _ in 0..d.pellets {
                     let pdir = jitter(dir, spread);
-                    any |= hitscan(now, eye, pdir, d.dmg, world, fx, stats);
+                    any |= hitscan(now, eye, muzzle, pdir, d.dmg, world, fx, stats);
                 }
                 if any {
                     stats.hits += 1;
@@ -252,7 +256,7 @@ impl Arsenal {
                 stats.shots += 1;
                 fx.muzzle_until = now + 0.06;
                 self.kick = 1.0;
-                fx.projectiles.push(Projectile { pos: eye + dir * 0.6, vel: dir * speed, gravity, splash, dmg: d.dmg, fuse: None });
+                fx.projectiles.push(Projectile { pos: muzzle, vel: dir * speed, gravity, splash, dmg: d.dmg, fuse: None });
             }
         }
         if d.mag > 0 && self.ammo[self.cur] == 0 {
@@ -321,14 +325,13 @@ fn register_hit(now: f64, world: &mut World, fx: &mut Fx, stats: &mut Stats, idx
     fx.popups.push((at, format!("{dmg:.0}"), color, now + 0.7));
 }
 
-fn hitscan(now: f64, eye: Vec3, dir: Vec3, dmg: f32, world: &mut World, fx: &mut Fx, stats: &mut Stats) -> bool {
-    let muzzle = eye + dir * 0.4 + vec3(0.0, -0.12, 0.0);
+fn hitscan(now: f64, eye: Vec3, muzzle: Vec3, dir: Vec3, dmg: f32, world: &mut World, fx: &mut Fx, stats: &mut Stats) -> bool {
     let Some((t, hit)) = world.raycast(now, eye, dir, 500.0) else {
-        fx.tracers.push((muzzle, eye + dir * 500.0, now + 0.05));
+        fx.tracers.push((muzzle, eye + dir * 500.0, now));
         return false;
     };
     let at = eye + dir * t;
-    fx.tracers.push((muzzle, at, now + 0.05));
+    fx.tracers.push((muzzle, at, now));
     match hit {
         Hit::Block => {
             fx.impacts.push((at, now + 1.5));
@@ -380,7 +383,7 @@ fn explode(now: f64, at: Vec3, splash: f32, dmg: f32, world: &mut World, fx: &mu
 }
 
 pub fn update_fx(now: f64, dt: f32, world: &mut World, fx: &mut Fx, stats: &mut Stats) {
-    fx.tracers.retain(|t| now < t.2);
+    fx.tracers.retain(|t| now < t.2 + t.0.distance(t.1) as f64 / TRACER_SPEED as f64 + 0.02);
     fx.impacts.retain(|t| now < t.1);
     fx.explosions.retain(|t| now < t.2);
     fx.popups.retain(|t| now < t.3);
@@ -423,8 +426,21 @@ pub fn update_fx(now: f64, dt: f32, world: &mut World, fx: &mut Fx, stats: &mut 
 }
 
 pub fn draw_fx(now: f64, fx: &Fx) {
-    for (a, b, _) in &fx.tracers {
-        draw_line_3d(*a, *b, Color::new(1.0, 0.9, 0.5, 0.8));
+    for (from, to, at) in &fx.tracers {
+        let path = *to - *from;
+        let dist = path.length();
+        if dist < 0.01 {
+            continue;
+        }
+        let dir = path / dist;
+        let head = ((now - at) as f32 * TRACER_SPEED).min(dist);
+        let tail = (head - TRACER_LEN).max(0.0);
+        if head <= tail {
+            continue;
+        }
+        let mid = *from + dir * (head + tail) / 2.0;
+        let m = Mat4::from_translation(mid) * Mat4::from_quat(Quat::from_rotation_arc(Vec3::NEG_Z, dir));
+        crate::render::draw_box_m(&m, vec3(0.018, 0.018, head - tail), Color::new(1.0, 0.92, 0.55, 0.9));
     }
     for (p, _) in &fx.impacts {
         draw_cube(*p, vec3(0.06, 0.06, 0.06), None, Color::new(0.1, 0.1, 0.1, 0.9));

@@ -379,7 +379,8 @@ impl Game {
         if trigger && self.grabbed {
             let moving = self.p.horizontal_speed() > 1.0;
             let spread = self.arms.current_spread(moving, !self.p.on_ground);
-            self.arms.fire(now, eye, dir, spread, &mut self.world, &mut self.fx, &mut self.stats);
+            let muzzle = self.muzzle_world(now);
+            self.arms.fire(now, eye, dir, muzzle, spread, &mut self.world, &mut self.fx, &mut self.stats);
         }
     }
 
@@ -482,7 +483,7 @@ impl Game {
             position: Vec3::ZERO,
             target: -Vec3::Z,
             up: Vec3::Y,
-            fovy: 68f32.to_radians(),
+            fovy: viewmodel::VIEWMODEL_FOV.to_radians(),
             aspect: Some(w as f32 / h as f32),
             z_near: 0.01,
             z_far: 10.0,
@@ -533,7 +534,8 @@ impl Game {
         let dir = self.p.look_dir();
         match anim {
             "fire" => {
-                self.arms.fire(now, eye, dir, 0.0, &mut self.world, &mut self.fx, &mut self.stats);
+                let muzzle = self.muzzle_world(now);
+                self.arms.fire(now, eye, dir, muzzle, 0.0, &mut self.world, &mut self.fx, &mut self.stats);
             }
             "reload" => {
                 self.arms.ammo[self.arms.cur] = 0;
