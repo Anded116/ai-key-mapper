@@ -302,6 +302,8 @@ impl Engine {
         self.pressed = current;
 
         self.left_stick(s.left, sink);
+        let (_, tilt) = apply_deadzone(s.left, self.profile.movement.deadzone);
+        self.buttons.left_stick(tilt > 0.0, &mut self.held, sink);
 
         let gyro_on = self.profile.gyro.off.is_none_or(|b| !self.pressed.contains(&b));
         let (gx, gy) = self.gyro.update(now, dt, s.gyro, &self.profile.gyro, gyro_on);

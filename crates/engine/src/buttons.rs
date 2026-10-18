@@ -30,6 +30,8 @@ pub struct Buttons {
     toggle: HashMap<Option<Btn>, Btn>,
     /// Taps waiting out the double-press window: fire time and keys.
     pending_tap: HashMap<(Btn, Option<Btn>), (f64, Vec<Output>)>,
+    /// Latched keys: button, keys, whether the stick has moved since the click.
+    latched: Vec<(Btn, Vec<Output>, bool)>,
     /// Key-ups of taps, due at the given time.
     scheduled_up: Vec<(f64, Output)>,
 }
@@ -64,6 +66,16 @@ impl Buttons {
             self.layers.push(b);
         }
         let (layer, Some(binding)) = self.resolve(b, p) else { return };
+        if !binding.latch.is_empty() {
+            if let Some(i) = self.latched.iter().position(|(l, _, _)| *l == b) {
+                let (_, keys, _) = self.latched.swap_remove(i);
+                keys.iter().for_each(|o| held.up(*o, sink));
+            } else {
+                binding.latch.iter().for_each(|o| held.down(*o, sink));
+                self.latched.push((b, binding.latch.clone(), false));
+            }
+            return;
+        }
         let key = (b, layer);
         let window = p.timing.double_ms as f64 / 1000.0;
         let mut immediate = binding.press.clone();
@@ -132,9 +144,9 @@ impl Buttons {
     }
 
     pub fn tick(&mut self, now: f64, p: &Profile, held: &mut Held, sink: &mut dyn Sink) {
-        let hold_after = p.timing.hold_ms as f64 / 1000.0;
         for a in self.active.values_mut() {
             let wants_hold = a.immediate.is_empty() && !a.binding.hold.is_empty();
+            let hold_after = a.binding.hold_ms.map_or(p.timing.hold_ms, |ms| ms as f32) as f64 / 1000.0;
             if wants_hold && !a.hold_fired && now - a.started >= hold_after {
                 a.hold_fired = true;
                 for o in &a.binding.hold {
@@ -159,6 +171,21 @@ impl Buttons {
         }
         let window = p.timing.double_ms as f64 / 1000.0;
         self.first_press.retain(|_, t| now - *t <= window);
+    }
+
+    /// Latched keys let go once the left stick, tilted after the click, is back in the centre.
+    pub fn left_stick(&mut self, tilted: bool, held: &mut Held, sink: &mut dyn Sink) {
+        self.latched.retain_mut(|(_, keys, moved)| {
+            if tilted {
+                *moved = true;
+                return true;
+            }
+            if !*moved {
+                return true;
+            }
+            keys.iter().for_each(|o| held.up(*o, sink));
+            false
+        });
     }
 
     /// Forget all presses (profile switch). Keys are released by the caller through `Held`.
@@ -219,6 +246,36 @@ mod tests {
         assert_eq!(r.events(), ["+M"]);
         r.release(Btn::Options, 2.0);
         assert_eq!(r.events(), ["-M"]);
+    }
+
+    #[test]
+    fn hold_ms_per_binding() {
+        let mut r = Rig::new("[buttons]\noptions = { tap = \"Esc\", hold = \"M\", hold_ms = 500 }");
+        r.press(Btn::Options, 0.0);
+        r.tick(0.3);
+        r.release(Btn::Options, 0.3);
+        r.tick(0.5);
+        assert_eq!(r.events(), ["+Esc", "-Esc"], "an unhurried 300 ms press is still a tap");
+        r.press(Btn::Options, 1.0);
+        r.tick(1.6);
+        assert_eq!(r.events(), ["+M"]);
+    }
+
+    #[test]
+    fn latch_holds_until_the_stick_returns() {
+        let mut r = Rig::new("[buttons]\nl3 = { latch = \"LShift\" }");
+        r.press(Btn::L3, 0.0);
+        r.release(Btn::L3, 0.05);
+        assert_eq!(r.events(), ["+LShift"], "one click, the key stays down");
+        r.b.left_stick(false, &mut r.held, &mut r.sink);
+        assert_eq!(r.events(), Vec::<String>::new(), "a click while standing waits for the stick");
+        r.b.left_stick(true, &mut r.held, &mut r.sink);
+        r.b.left_stick(false, &mut r.held, &mut r.sink);
+        assert_eq!(r.events(), ["-LShift"], "stick back in the centre lets go");
+        r.press(Btn::L3, 1.0);
+        r.b.left_stick(true, &mut r.held, &mut r.sink);
+        r.press(Btn::L3, 1.5);
+        assert_eq!(r.events(), ["+LShift", "-LShift"], "second click lets go too");
     }
 
     #[test]

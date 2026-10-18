@@ -33,7 +33,7 @@ tap_ms = 40
 l1 = "Space"                    # jump
 r1 = "MouseLeft"                # fire
 l2 = "MouseRight"               # aim
-l3 = "LShift"                   # sprint
+l3 = { latch = "LShift" }       # sprint: one click, lasts until the stick is back in the centre
 r3 = "V"                        # melee
 cross = "E"                     # use
 square = "R"                    # reload

@@ -82,6 +82,9 @@ impl Btn {
 /// `next` is the second weapon of a pair, the way JoyShockMapper presets did it with state
 /// files: pressing the same button again gives `next`, however much later; pressing another
 /// paired button starts over with its `press`.
+///
+/// `latch` is console-style sprint: one click holds the keys while the left stick is tilted; they
+/// let go when the stick comes back to the centre or on the next click.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Binding {
     pub press: Vec<Output>,
@@ -89,11 +92,19 @@ pub struct Binding {
     pub hold: Vec<Output>,
     pub double: Vec<Output>,
     pub next: Vec<Output>,
+    pub latch: Vec<Output>,
+    /// Hold time of this binding, instead of `timing.hold_ms` (menu buttons want a longer one).
+    pub hold_ms: Option<u32>,
 }
 
 impl Binding {
     pub fn is_empty(&self) -> bool {
-        self.press.is_empty() && self.tap.is_empty() && self.hold.is_empty() && self.double.is_empty() && self.next.is_empty()
+        self.press.is_empty()
+            && self.tap.is_empty()
+            && self.hold.is_empty()
+            && self.double.is_empty()
+            && self.next.is_empty()
+            && self.latch.is_empty()
     }
 }
 
@@ -436,6 +447,8 @@ struct RawBindingTable {
     hold: Option<Keys>,
     double: Option<Keys>,
     next: Option<Keys>,
+    latch: Option<Keys>,
+    hold_ms: Option<u32>,
 }
 
 // ---------- loading ----------
@@ -545,10 +558,19 @@ fn binding(raw: &RawBinding, ctx: &str) -> Result<Binding, ProfileError> {
             hold: opt_outputs(&t.hold, ctx)?,
             double: opt_outputs(&t.double, ctx)?,
             next: opt_outputs(&t.next, ctx)?,
+            latch: opt_outputs(&t.latch, ctx)?,
+            hold_ms: t.hold_ms,
         },
     };
     if !b.press.is_empty() && (!b.tap.is_empty() || !b.hold.is_empty()) {
         return err(format!("{ctx}: `press` cannot be combined with `tap`/`hold`"));
+    }
+    let others = !b.press.is_empty() || !b.tap.is_empty() || !b.hold.is_empty() || !b.double.is_empty();
+    if !b.latch.is_empty() && (others || !b.next.is_empty()) {
+        return err(format!("{ctx}: `latch` cannot be combined with other fields"));
+    }
+    if b.hold_ms.is_some() && b.hold.is_empty() {
+        return err(format!("{ctx}: `hold_ms` needs `hold`"));
     }
     if !b.next.is_empty() && b.press.is_empty() {
         return err(format!("{ctx}: `next` needs `press`"));

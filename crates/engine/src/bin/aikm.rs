@@ -59,7 +59,7 @@ fn check(path: &Path) {
 fn describe(b: &engine::profile::Binding) -> String {
     let list = |v: &Vec<engine::Output>| v.iter().map(|o| o.name()).collect::<Vec<_>>().join("+");
     let mut parts = Vec::new();
-    for (name, v) in [("", &b.press), ("тап ", &b.tap), ("удерж. ", &b.hold), ("×2 ", &b.double), ("повтор ", &b.next)] {
+    for (name, v) in [("", &b.press), ("тап ", &b.tap), ("удерж. ", &b.hold), ("×2 ", &b.double), ("повтор ", &b.next), ("до остановки ", &b.latch)] {
         if !v.is_empty() {
             parts.push(format!("{name}{}", list(v)));
         }
