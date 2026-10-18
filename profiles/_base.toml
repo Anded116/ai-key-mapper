@@ -41,8 +41,8 @@ cross = "E"                     # использовать
 square = "R"                    # перезарядка
 triangle = "G"                  # граната / способность
 circle = "LCtrl"                # присед
-options = "Esc"                 # пауза
-create = "Tab"                  # статистика, пока держишь
+options = { tap = "Tab", hold = "Esc", hold_ms = 500 }   # инвентарь - меню
+create = ""                     # статистика, пока держишь
 dpad_down = "F"                 # фонарик
 dpad_left = "I"                 # инвентарь
 dpad_right = "M"                # карта
@@ -54,5 +54,5 @@ keys = ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 [layer.r2]
 create = "F5"                   # быстрое сохранение
-options = "F9"                  # быстрая загрузка
+options = ""                    # быстрая загрузка
 l3 = "ToggleMovement"           # левый стик: гибрид ↔ WASD

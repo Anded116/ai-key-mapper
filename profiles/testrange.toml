@@ -22,3 +22,9 @@ dpad_down = "MouseMiddle"       # метка
 pad_left = "F1"                 # справка
 pad_right = "F2"                # отладочный HUD
 mic = "F8"                      # сброс счётчиков
+# TestRange держит раскладку меню как в пресете jsm/ — стандарт может меняться
+options = "Esc"                 # пауза
+create = "Tab"                  # статистика, пока держишь
+
+[layer.r2]
+options = "F9"                  # быстрая загрузка
