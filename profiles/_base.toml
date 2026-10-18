@@ -1,0 +1,52 @@
+# Core of the layout standard (docs/layout-standard.md). Game profiles inherit it with
+# extends = "_base" and override only what the game needs.
+
+[calibration]
+real_world = 40.0               # mouse counts per degree at in-game sensitivity 1
+in_game_sens = 1.0
+
+[gyro]
+min_sens = 2.3
+max_sens = 3.5
+min_threshold = 0.0             # deg/s where min_sens applies
+max_threshold = 75.0            # deg/s where max_sens applies
+off = "touch"                   # finger on the touchpad = gyro off
+calibrate = "ps"                # hold PS with the pad still to recalibrate
+startup_calibration = 1.0       # seconds after start; keep the pad still
+
+[flick]
+enabled = true
+time = 0.1
+threshold = 0.9
+
+[movement]
+mode = "hybrid"                 # the game reads the left stick; "wasd" for keyboard-only games
+walk = ""                       # wasd: key held on a partial tilt
+sprint = ""                     # wasd: key held on a full tilt
+
+[timing]
+hold_ms = 150
+double_ms = 250
+tap_ms = 40
+
+[buttons]
+l1 = "Space"                    # jump
+r1 = "MouseLeft"                # fire
+l2 = "MouseRight"               # aim
+l3 = "LShift"                   # sprint
+r3 = "V"                        # melee
+cross = "E"                     # use
+square = "R"                    # reload
+triangle = "G"                  # grenade / ability
+circle = "LCtrl"                # crouch
+options = { tap = "Esc", hold = "M" }
+create = { tap = "I", hold = "Tab" }
+
+[weapons]                       # R2 + □ ✕ ○ △; with 8 slots the second press gives the even slot
+layer = "r2"
+slots = 8
+keys = ["1", "2", "3", "4", "5", "6", "7", "8"]
+
+[layer.r2]
+create = "F5"                   # quick save
+options = "F9"                  # quick load

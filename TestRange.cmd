@@ -5,8 +5,8 @@ cd /d "%~dp0"
 
 where cargo >nul 2>nul
 if not errorlevel 1 (
-  echo Сборка TestRange...
-  cargo build --release -p testrange
+  echo Сборка TestRange и движка...
+  cargo build --release -p testrange -p engine
   if errorlevel 1 goto :fail
 )
 if not exist "target\release\testrange.exe" (
@@ -18,14 +18,34 @@ if /i "%~1"=="jsm" (
   call :start_jsm
   if errorlevel 1 goto :fail
 )
+if /i "%~1"=="aikm" (
+  call :start_aikm
+  if errorlevel 1 goto :fail
+)
 
 start "" /D "%~dp0demo" "%~dp0target\release\testrange.exe"
+exit /b 0
+
+:start_aikm
+tasklist /fi "imagename eq JoyShockMapper.exe" | find /i "JoyShockMapper.exe" >nul
+if not errorlevel 1 (
+  echo Запущен JoyShockMapper. Закрой его: два маппера сразу задвоят ввод.
+  exit /b 1
+)
+echo Положи геймпад на стол: первая секунда — калибровка гироскопа.
+start "aikm" cmd /k ""%~dp0target\release\aikm.exe" run "%~dp0profiles\testrange.toml""
+timeout /t 2 /nobreak >nul
 exit /b 0
 
 :start_jsm
 tasklist /fi "imagename eq JoyShockMapper.exe" | find /i "JoyShockMapper.exe" >nul
 if not errorlevel 1 (
   echo JoyShockMapper уже запущен. Закрой его: иначе загрузится не тот пресет или ввод задвоится.
+  exit /b 1
+)
+tasklist /fi "imagename eq aikm.exe" | find /i "aikm.exe" >nul
+if not errorlevel 1 (
+  echo Запущен aikm. Закрой его окно: два маппера сразу задвоят ввод.
   exit /b 1
 )
 set "JSM_HOME=%~dp0tools\JoyShockMapper\JoyShockMapper_SDL2_x64"

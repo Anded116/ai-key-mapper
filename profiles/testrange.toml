@@ -1,0 +1,14 @@
+extends = "_base"
+game = "TestRange"
+exe = "testrange.exe"
+
+[calibration]
+real_world = 45.4545            # Source-style 0.022°/count
+in_game_sens = 1.0
+
+[buttons]
+dpad_up = "F"                   # flashlight
+dpad_down = "MouseMiddle"       # ping
+pad_left = "F1"                 # help
+pad_right = "F2"                # debug HUD
+mic = "F8"                      # reset counters
