@@ -1,0 +1,9 @@
+# Keyboard movement for games that ignore the controller: left stick = WASD,
+# a partial tilt also holds the walk key (inner ring), so small tilts walk.
+LUP = W
+LDOWN = S
+LLEFT = A
+LRIGHT = D
+LEFT_RING_MODE = INNER
+LRING = LALT
+ZR,L3 = "Presets/move_hybrid.txt"\

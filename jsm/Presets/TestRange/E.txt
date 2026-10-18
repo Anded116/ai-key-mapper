@@ -1,3 +1,4 @@
+LIGHT_BAR = xFF2828
 ZR,W = 1\ "Presets/TestRange/W.txt"\
 ZR,S = 3\ "Presets/TestRange/S.txt"\
 ZR,E = 6\ "Presets/TestRange/Neutral.txt"\

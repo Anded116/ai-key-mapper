@@ -14,6 +14,19 @@ pub enum MixedInput {
     LastDeviceWins,
 }
 
+/// How stick deflection maps to movement speed when the game reads the stick itself.
+#[derive(Clone, Copy, PartialEq)]
+pub enum AnalogMode {
+    /// Speed proportional to deflection.
+    Smooth,
+    /// Walk below WALK_THRESHOLD, run above it.
+    WalkRun,
+    /// Always full speed, like WASD.
+    Full,
+}
+
+pub const WALK_THRESHOLD: f32 = 0.6;
+
 pub struct Settings {
     pub sens: f32,
     pub fov: f32,
@@ -24,6 +37,7 @@ pub struct Settings {
     pub ads_toggle: bool,
     pub pad_move: bool,
     pub mixed: MixedInput,
+    pub analog: AnalogMode,
     pub show_debug: bool,
 }
 
@@ -39,12 +53,13 @@ impl Default for Settings {
             ads_toggle: false,
             pad_move: true,
             mixed: MixedInput::Simultaneous,
+            analog: AnalogMode::Smooth,
             show_debug: true,
         }
     }
 }
 
-pub const MENU_LEN: usize = 10;
+pub const MENU_LEN: usize = 11;
 
 impl Settings {
     pub fn load() -> Self {
@@ -66,6 +81,13 @@ impl Settings {
                 "last_device_wins" => {
                     s.mixed = if b { MixedInput::LastDeviceWins } else { MixedInput::Simultaneous }
                 }
+                "analog" => {
+                    s.analog = match v {
+                        "1" => AnalogMode::WalkRun,
+                        "2" => AnalogMode::Full,
+                        _ => AnalogMode::Smooth,
+                    }
+                }
                 "show_debug" => s.show_debug = b,
                 _ => {}
             }
@@ -77,7 +99,7 @@ impl Settings {
         let f = |b: bool| if b { 1 } else { 0 };
         let text = format!(
             "sens={}\nfov={}\ninvert_y={}\nads_scale_by_fov={}\nsprint_toggle={}\ncrouch_toggle={}\n\
-             ads_toggle={}\npad_move={}\nlast_device_wins={}\nshow_debug={}\n",
+             ads_toggle={}\npad_move={}\nlast_device_wins={}\nanalog={}\nshow_debug={}\n",
             self.sens,
             self.fov,
             f(self.invert_y),
@@ -87,6 +109,7 @@ impl Settings {
             f(self.ads_toggle),
             f(self.pad_move),
             f(self.mixed == MixedInput::LastDeviceWins),
+            self.analog as u8,
             f(self.show_debug),
         );
         let _ = fs::write(PATH, text);
@@ -109,6 +132,14 @@ impl Settings {
                 match self.mixed {
                     MixedInput::Simultaneous => "одновременно".to_string(),
                     MixedInput::LastDeviceWins => "последнее устройство".to_string(),
+                },
+            ),
+            9 => (
+                "Скорость от отклонения стика",
+                match self.analog {
+                    AnalogMode::Smooth => "плавно".to_string(),
+                    AnalogMode::WalkRun => format!("шаг до {:.0}%, дальше бег", WALK_THRESHOLD * 100.0),
+                    AnalogMode::Full => "всегда бег".to_string(),
                 },
             ),
             _ => ("Отладочный HUD (F2)", yn(self.show_debug)),
@@ -134,6 +165,11 @@ impl Settings {
                     MixedInput::Simultaneous => MixedInput::LastDeviceWins,
                     MixedInput::LastDeviceWins => MixedInput::Simultaneous,
                 }
+            }
+            9 => {
+                const ALL: [AnalogMode; 3] = [AnalogMode::Smooth, AnalogMode::WalkRun, AnalogMode::Full];
+                let i = ALL.iter().position(|m| *m == self.analog).unwrap_or(0) as i32;
+                self.analog = ALL[(i + dir.signum() as i32).rem_euclid(3) as usize];
             }
             _ => self.show_debug = !self.show_debug,
         }

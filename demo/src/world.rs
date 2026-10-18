@@ -47,8 +47,8 @@ impl Aabb {
     }
 
     pub fn draw(&self, color: Color) {
-        draw_cube(self.center(), self.size(), None, color);
-        draw_cube_wires(self.center(), self.size(), Color::new(0.0, 0.0, 0.0, 0.35));
+        crate::render::draw_box(self.center(), self.size(), color);
+        draw_cube_wires(self.center(), self.size(), Color::new(0.0, 0.0, 0.0, 0.12));
     }
 }
 
@@ -229,7 +229,7 @@ impl World {
         }
         draw_grid_at_floor();
         for (p, c) in &self.pillars {
-            draw_cube(*p + vec3(0.0, 5.0, 0.0), vec3(0.8, 10.0, 0.8), None, *c);
+            crate::render::draw_box(*p + vec3(0.0, 5.0, 0.0), vec3(0.8, 10.0, 0.8), *c);
         }
         let bc = if self.button_on { GREEN } else { RED };
         self.button.draw(bc);

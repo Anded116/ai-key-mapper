@@ -1,0 +1,7 @@
+# Hybrid movement: the game reads the left stick itself, so analog walk/run works.
+LUP = NONE
+LDOWN = NONE
+LLEFT = NONE
+LRIGHT = NONE
+LRING = NONE
+ZR,L3 = "Presets/move_wasd.txt"\

@@ -4,7 +4,7 @@ use macroquad::prelude::*;
 use crate::input::btn_name;
 use crate::player::Stance;
 use crate::settings::{MixedInput, MENU_LEN, YAW_DEG_PER_COUNT};
-use crate::weapons::{Kind, DEFS, SWITCH_TIME};
+use crate::weapons::{Kind, DEFS};
 use crate::world::{FLOOR_MAX, FLOOR_MIN, TARGET_HP};
 use crate::{Game, BINDINGS};
 
@@ -22,6 +22,37 @@ fn modal(x: f32, y: f32, w: f32, h: f32) {
 
 fn panel(x: f32, y: f32, w: f32, h: f32) {
     draw_rectangle(x, y, w, h, PANEL);
+}
+
+const SWITCH_POPUP: f32 = 1.2;
+
+#[derive(Clone, Copy)]
+enum Glyph {
+    Square,
+    Cross,
+    Circle,
+    Triangle,
+}
+
+/// Face buttons in weapon-pair order (□ 1/2, ✕ 3/4, ○ 5/6, △ 7/8) with PlayStation colors.
+const FACE_ARMS: [(Glyph, Color, Vec2); 4] = [
+    (Glyph::Square, Color::new(0.95, 0.5, 0.8, 1.0), Vec2::new(-1.0, 0.0)),
+    (Glyph::Cross, Color::new(0.45, 0.62, 1.0, 1.0), Vec2::new(0.0, 1.0)),
+    (Glyph::Circle, Color::new(1.0, 0.38, 0.42, 1.0), Vec2::new(1.0, 0.0)),
+    (Glyph::Triangle, Color::new(0.3, 0.85, 0.65, 1.0), Vec2::new(0.0, -1.0)),
+];
+
+fn draw_glyph(g: Glyph, x: f32, y: f32, r: f32, c: Color) {
+    let t = (r * 0.3).max(1.5);
+    match g {
+        Glyph::Square => draw_rectangle_lines(x - r, y - r, r * 2.0, r * 2.0, t, c),
+        Glyph::Circle => draw_circle_lines(x, y, r, t, c),
+        Glyph::Cross => {
+            draw_line(x - r, y - r, x + r, y + r, t, c);
+            draw_line(x - r, y + r, x + r, y - r, t, c);
+        }
+        Glyph::Triangle => draw_triangle_lines(vec2(x, y - r), vec2(x - r, y + r * 0.8), vec2(x + r, y + r * 0.8), t, c),
+    }
 }
 
 /// Compass angle of a 2D move vector: 0° = forward, positive = right.
@@ -42,11 +73,16 @@ impl Game {
         let scoped = self.arms.cur == 5 && self.arms.ads > 0.85;
         if scoped {
             self.draw_scope(w, h);
-        } else {
-            self.draw_viewmodel(now, w, h);
         }
         self.draw_crosshair(now, w, h, scoped);
         self.draw_weapon_panel(now, w, h);
+        let since_switch = (now - self.switched_at) as f32;
+        if !self.show_inv && since_switch < SWITCH_POPUP {
+            let alpha = ((SWITCH_POPUP - since_switch) / 0.3).min(1.0);
+            self.draw_cross(w / 2.0, h * 0.7, 1.0, alpha);
+        } else if !self.show_inv {
+            self.draw_cross(14.0 + 250.0, h - 14.0 - 108.0 - 110.0, 0.72, 0.9);
+        }
         self.draw_status_panel(now, h);
         self.draw_toasts(now, w);
         if self.s.show_debug {
@@ -126,69 +162,53 @@ impl Game {
         draw_circle_lines(cx, cy, r, 3.0, BLACK);
     }
 
-    fn draw_viewmodel(&self, now: f64, w: f32, h: f32) {
-        let d = self.arms.def();
-        let ads = self.arms.ads;
-        let mut x = w * 0.66 + (w * 0.5 - 60.0 - w * 0.66) * ads;
-        let mut y = h * 0.74 + (h * 0.62 - h * 0.74) * ads;
-        let speed = self.p.horizontal_speed();
-        if self.p.on_ground && speed > 0.5 {
-            let k = (now as f32 * speed * 2.2).sin();
-            x += k * 6.0 * (1.0 - ads);
-            y += k.abs() * 6.0 * (1.0 - ads);
-        }
-        y += self.arms.kick * 18.0;
-        if let Some(t) = self.arms.reload_until {
-            let left = ((t - now) / d.reload).clamp(0.0, 1.0) as f32;
-            y += (left * std::f32::consts::PI).sin() * 140.0;
-        }
-        if now < self.arms.switch_until {
-            y += ((self.arms.switch_until - now) / SWITCH_TIME) as f32 * 220.0;
-        }
-        if now < self.arms.melee_until {
-            let k = ((self.arms.melee_until - now) / 0.5) as f32;
-            draw_triangle(vec2(w * 0.35, h), vec2(w * 0.5 - 40.0 * k, h * 0.55), vec2(w * 0.42, h), Color::new(0.85, 0.85, 0.9, 0.9));
-        }
-        if let Kind::Melee { .. } = d.kind {
-            draw_triangle(vec2(x, y), vec2(x - 120.0, y - 150.0), vec2(x + 30.0, y - 20.0), d.color);
-            draw_rectangle(x - 10.0, y - 10.0, 40.0, 120.0, DARKBROWN);
-            return;
-        }
-        let body_w = 260.0;
-        draw_rectangle(x - 40.0, y - 30.0, body_w, 60.0, d.color);
-        draw_rectangle(x - 150.0, y - 20.0, 120.0, 22.0, DARKGRAY);
-        draw_rectangle(x + 40.0, y + 25.0, 40.0, 120.0, Color::new(0.2, 0.2, 0.22, 1.0));
-        draw_rectangle_lines(x - 40.0, y - 30.0, body_w, 60.0, 2.0, Color::new(0.0, 0.0, 0.0, 0.5));
-        if now < self.fx.muzzle_until {
-            draw_circle(x - 160.0, y - 9.0, 26.0, Color::new(1.0, 0.85, 0.4, 0.9));
-            draw_circle(x - 160.0, y - 9.0, 12.0, WHITE);
-        }
-    }
-
     fn draw_weapon_panel(&self, now: f64, w: f32, h: f32) {
         let d = self.arms.def();
-        let (pw, ph) = (360.0, 108.0);
+        let (pw, ph) = (360.0, 84.0);
         let (x, y) = (w - pw - 14.0, h - ph - 14.0);
         panel(x, y, pw, ph);
         self.txt.shadow(&format!("{}  {}", self.arms.cur + 1, d.name), x + 14.0, y + 30.0, 24.0, WHITE);
         let ammo = if d.mag == 0 { "∞".to_string() } else { format!("{} / {}", self.arms.ammo[self.arms.cur], d.mag) };
-        self.txt.shadow(&ammo, x + 14.0, y + 64.0, 30.0, ACCENT);
+        self.txt.shadow(&ammo, x + 14.0, y + 66.0, 30.0, ACCENT);
         let mode = if d.auto { "авто" } else { "одиночный" };
-        self.txt.draw(mode, x + 200.0, y + 64.0, 18.0, DIM);
+        self.txt.draw(mode, x + 200.0, y + 66.0, 18.0, DIM);
         if let Some(t) = self.arms.reload_until {
             let k = 1.0 - ((t - now) / d.reload).clamp(0.0, 1.0) as f32;
             draw_rectangle(x + 14.0, y + 74.0, (pw - 28.0) * k, 5.0, WARN);
             self.txt.draw("перезарядка", x + 200.0, y + 40.0, 16.0, WARN);
         }
-        let slot = 34.0;
-        let sx = x + (pw - slot * 9.0) / 2.0;
-        for i in 0..9 {
-            let bx = sx + i as f32 * slot;
-            let by = y + ph - 24.0;
-            let active = i == self.arms.cur;
-            draw_rectangle(bx + 2.0, by, slot - 4.0, 20.0, if active { ACCENT } else { Color::new(1.0, 1.0, 1.0, 0.12) });
-            let c = if active { BLACK } else { DIM };
-            self.txt.draw(&(i + 1).to_string(), bx + 12.0, by + 15.0, 16.0, c);
+    }
+
+    /// Weapon layout as it sits under R2: each face button holds two weapons,
+    /// the first press gives the inner one, the second press the outer one.
+    fn draw_cross(&self, cx: f32, cy: f32, s: f32, alpha: f32) {
+        let (cw, ch, gap, pad) = (150.0 * s, 46.0 * s, 36.0 * s, 6.0 * s);
+        let fade = |c: Color| Color::new(c.r, c.g, c.b, c.a * alpha);
+        draw_circle(cx, cy, 24.0 * s, fade(PANEL));
+        self.txt.centered("R2", cx, cy + 7.0 * s, 19.0 * s, fade(DIM));
+        for (arm, (glyph, color, dir)) in FACE_ARMS.iter().enumerate() {
+            let horizontal = dir.x != 0.0;
+            for k in 0..2 {
+                let slot = arm * 2 + k;
+                let (x, y) = if horizontal {
+                    (cx + dir.x * (gap + cw / 2.0 + k as f32 * (cw + pad)), cy)
+                } else {
+                    (cx, cy + dir.y * (gap + ch / 2.0 + k as f32 * (ch + pad)))
+                };
+                let active = slot == self.arms.cur;
+                let bg = if active { Color::new(0.4, 0.85, 1.0, 0.9) } else { PANEL };
+                draw_rectangle(x - cw / 2.0, y - ch / 2.0, cw, ch, fade(bg));
+                draw_rectangle_lines(x - cw / 2.0, y - ch / 2.0, cw, ch, 1.5 * s, fade(Color::new(color.r, color.g, color.b, 0.6)));
+                let text_c = if active { BLACK } else { WHITE };
+                let d = &DEFS[slot];
+                self.txt.draw(&format!("{} {}", slot + 1, d.short), x - cw / 2.0 + 10.0 * s, y + 6.0 * s, 18.0 * s, fade(text_c));
+                for dot in 0..=k {
+                    let dx = x + cw / 2.0 - 10.0 * s - dot as f32 * 9.0 * s;
+                    draw_circle(dx, y - ch / 2.0 + 9.0 * s, 3.0 * s, fade(*color));
+                }
+            }
+            let g = vec2(cx, cy) + *dir * (gap * 0.62);
+            draw_glyph(*glyph, g.x, g.y, 7.0 * s, fade(*color));
         }
     }
 
@@ -398,18 +418,17 @@ impl Game {
     }
 
     fn draw_inventory(&self, w: f32, h: f32) {
-        let (pw, ph) = (620.0, 360.0);
+        let (pw, ph) = (1000.0, 520.0);
         let (x, y) = ((w - pw) / 2.0, (h - ph) / 2.0);
         modal(x, y, pw, ph);
-        self.txt.centered("Инвентарь (I)", w / 2.0, y + 34.0, 26.0, WHITE);
-        for (i, d) in DEFS.iter().enumerate() {
-            let ry = y + 70.0 + i as f32 * 28.0;
-            let c = if i == self.arms.cur { ACCENT } else { DIM };
-            let ammo = if d.mag == 0 { "∞".to_string() } else { format!("{}/{}", self.arms.ammo[i], d.mag) };
-            let mode = if d.auto { "авто" } else { "одиночн." };
-            self.txt.draw(&format!("{}  {}", i + 1, d.name), x + 30.0, ry, 20.0, c);
-            self.txt.draw(&format!("{ammo:>7}  {mode}  {:.0} в/мин  ×{:.1}", d.rpm, d.zoom), x + 300.0, ry, 18.0, c);
-        }
+        self.txt.centered("Инвентарь (I) · R2 + кнопка: первое нажатие — внутреннее, второе — внешнее", w / 2.0, y + 36.0, 22.0, WHITE);
+        self.draw_cross(w / 2.0, y + 250.0, 1.3, 1.0);
+        let d = self.arms.def();
+        let i = self.arms.cur;
+        let ammo = if d.mag == 0 { "∞".to_string() } else { format!("{}/{}", self.arms.ammo[i], d.mag) };
+        let mode = if d.auto { "авто" } else { "одиночный" };
+        let line = format!("{}  {} · {ammo} · {mode} · {:.0} выстр/мин · прицел ×{:.1}", i + 1, d.name, d.rpm, d.zoom);
+        self.txt.centered(&line, w / 2.0, y + ph - 36.0, 20.0, ACCENT);
     }
 
     fn draw_help(&self, w: f32, h: f32) {

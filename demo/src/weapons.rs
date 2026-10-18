@@ -12,6 +12,7 @@ pub enum Kind {
 
 pub struct Def {
     pub name: &'static str,
+    pub short: &'static str,
     pub auto: bool,
     pub rpm: f32,
     pub mag: u32,
@@ -23,62 +24,45 @@ pub struct Def {
     pub ads_spread: f32,
     pub zoom: f32,
     pub kind: Kind,
-    pub color: Color,
 }
 
-const fn def(
-    name: &'static str,
-    auto: bool,
-    rpm: f32,
-    mag: u32,
-    reload: f64,
-    dmg: f32,
-    pellets: u32,
-    spread: f32,
-    ads_spread: f32,
-    zoom: f32,
-    kind: Kind,
-    color: Color,
-) -> Def {
-    Def { name, auto, rpm, mag, reload, dmg, pellets, spread, ads_spread, zoom, kind, color }
-}
+const BASE: Def = Def {
+    name: "",
+    short: "",
+    auto: false,
+    rpm: 600.0,
+    mag: 30,
+    reload: 2.0,
+    dmg: 20.0,
+    pellets: 1,
+    spread: 1.5,
+    ads_spread: 0.3,
+    zoom: 1.3,
+    kind: Kind::Hitscan,
+};
 
-pub const DEFS: [Def; 9] = [
-    def("Нож", false, 120.0, 0, 0.0, 55.0, 1, 0.0, 0.0, 1.0, Kind::Melee { range: 2.3 }, Color::new(0.8, 0.8, 0.85, 1.0)),
-    def("Пистолет", false, 420.0, 12, 1.2, 25.0, 1, 1.2, 0.2, 1.3, Kind::Hitscan, Color::new(0.6, 0.6, 0.65, 1.0)),
-    def("Дробовик", false, 70.0, 6, 2.0, 11.0, 9, 5.0, 3.5, 1.2, Kind::Hitscan, Color::new(0.55, 0.4, 0.3, 1.0)),
-    def("Пистолет-пулемёт", true, 900.0, 30, 1.6, 14.0, 1, 2.5, 1.0, 1.3, Kind::Hitscan, Color::new(0.35, 0.45, 0.55, 1.0)),
-    def("Автомат", true, 650.0, 30, 2.0, 22.0, 1, 1.6, 0.15, 1.6, Kind::Hitscan, Color::new(0.4, 0.5, 0.35, 1.0)),
-    def("Снайперская винтовка", false, 45.0, 5, 2.6, 100.0, 1, 6.0, 0.0, 4.0, Kind::Hitscan, Color::new(0.3, 0.35, 0.3, 1.0)),
-    def(
-        "Ракетомёт",
-        false,
-        60.0,
-        1,
-        1.6,
-        110.0,
-        1,
-        0.0,
-        0.0,
-        1.2,
-        Kind::Projectile { speed: 35.0, gravity: 0.0, splash: 4.0 },
-        Color::new(0.45, 0.5, 0.3, 1.0),
-    ),
-    def("Пулемёт", true, 1100.0, 100, 4.0, 12.0, 1, 3.0, 1.2, 1.3, Kind::Hitscan, Color::new(0.3, 0.3, 0.32, 1.0)),
-    def(
-        "Гранатомёт",
-        false,
-        90.0,
-        6,
-        2.5,
-        90.0,
-        1,
-        0.0,
-        0.0,
-        1.2,
-        Kind::Projectile { speed: 24.0, gravity: 14.0, splash: 3.5 },
-        Color::new(0.5, 0.45, 0.25, 1.0),
-    ),
+/// Pairs per face button: □ 1/2, ✕ 3/4, ○ 5/6, △ 7/8 (first press / second press).
+pub const DEFS: [Def; 8] = [
+    Def { name: "Нож", short: "Нож", rpm: 120.0, mag: 0, reload: 0.0, dmg: 55.0, spread: 0.0, ads_spread: 0.0, zoom: 1.0, kind: Kind::Melee { range: 2.3 }, ..BASE },
+    Def { name: "Пистолет", short: "Пистолет", rpm: 420.0, mag: 12, reload: 1.2, dmg: 25.0, spread: 1.2, ads_spread: 0.2, ..BASE },
+    Def { name: "Дробовик", short: "Дробовик", rpm: 70.0, mag: 6, dmg: 11.0, pellets: 9, spread: 5.0, ads_spread: 3.5, zoom: 1.2, ..BASE },
+    Def { name: "Пистолет-пулемёт", short: "ПП", auto: true, rpm: 900.0, reload: 1.6, dmg: 14.0, spread: 2.5, ads_spread: 1.0, ..BASE },
+    Def { name: "Автомат", short: "Автомат", auto: true, rpm: 650.0, dmg: 22.0, spread: 1.6, ads_spread: 0.15, zoom: 1.6, ..BASE },
+    Def { name: "Снайперская винтовка", short: "Снайперка", rpm: 45.0, mag: 5, reload: 2.6, dmg: 100.0, spread: 6.0, ads_spread: 0.0, zoom: 4.0, ..BASE },
+    Def {
+        name: "Ракетомёт",
+        short: "Ракетомёт",
+        rpm: 60.0,
+        mag: 1,
+        reload: 1.6,
+        dmg: 110.0,
+        spread: 0.0,
+        ads_spread: 0.0,
+        zoom: 1.2,
+        kind: Kind::Projectile { speed: 35.0, gravity: 0.0, splash: 4.0 },
+        ..BASE
+    },
+    Def { name: "Пулемёт", short: "Пулемёт", auto: true, rpm: 1100.0, mag: 100, reload: 4.0, dmg: 12.0, spread: 3.0, ads_spread: 1.2, ..BASE },
 ];
 
 pub const SWITCH_TIME: f64 = 0.25;
@@ -87,8 +71,7 @@ const MELEE_COOLDOWN: f64 = 0.5;
 
 pub struct Arsenal {
     pub cur: usize,
-    pub prev: usize,
-    pub ammo: [u32; 9],
+    pub ammo: [u32; 8],
     pub next_fire: f64,
     pub reload_until: Option<f64>,
     pub switch_until: f64,
@@ -97,6 +80,9 @@ pub struct Arsenal {
     pub grenade_ready: f64,
     pub melee_until: f64,
     pub kick: f32,
+    /// Start of the last knife swing and grenade throw, for the viewmodel.
+    pub swing_at: f64,
+    pub throw_at: f64,
 }
 
 #[derive(Default)]
@@ -150,13 +136,12 @@ impl Fx {
 
 impl Arsenal {
     pub fn new() -> Self {
-        let mut ammo = [0; 9];
+        let mut ammo = [0; 8];
         for (i, d) in DEFS.iter().enumerate() {
             ammo[i] = d.mag;
         }
         Self {
             cur: 1,
-            prev: 0,
             ammo,
             next_fire: 0.0,
             reload_until: None,
@@ -166,6 +151,8 @@ impl Arsenal {
             grenade_ready: 0.0,
             melee_until: 0.0,
             kick: 0.0,
+            swing_at: -10.0,
+            throw_at: -10.0,
         }
     }
 
@@ -177,18 +164,11 @@ impl Arsenal {
         if slot == self.cur || slot >= DEFS.len() {
             return false;
         }
-        self.prev = self.cur;
         self.cur = slot;
         self.reload_until = None;
         self.switch_until = now + SWITCH_TIME;
         stats.switches += 1;
         true
-    }
-
-    pub fn cycle(&mut self, now: f64, dir: i32, stats: &mut Stats) {
-        let n = DEFS.len() as i32;
-        let slot = (self.cur as i32 + dir).rem_euclid(n) as usize;
-        self.select(now, slot, stats);
     }
 
     pub fn start_reload(&mut self, now: f64, stats: &mut Stats) -> bool {
@@ -247,6 +227,7 @@ impl Arsenal {
         match d.kind {
             Kind::Melee { range } => {
                 stats.melee += 1;
+                self.swing_at = now;
                 strike(now, eye, dir, range, d.dmg, world, fx, stats);
             }
             Kind::Hitscan => {
@@ -280,6 +261,7 @@ impl Arsenal {
             return false;
         }
         self.melee_until = now + MELEE_COOLDOWN;
+        self.swing_at = now;
         self.reload_until = None;
         stats.melee += 1;
         strike(now, eye, dir, 2.3, 55.0, world, fx, stats);
@@ -291,6 +273,7 @@ impl Arsenal {
             return false;
         }
         self.grenade_ready = now + GRENADE_COOLDOWN;
+        self.throw_at = now;
         stats.grenades += 1;
         let v = (dir + vec3(0.0, 0.25, 0.0)).normalize() * 18.0;
         fx.projectiles.push(Projectile { pos: eye + dir * 0.5, vel: v, gravity: 14.0, splash: 5.0, dmg: 120.0, fuse: Some(now + 2.0) });

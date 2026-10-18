@@ -5,31 +5,26 @@ RESET_MAPPINGS
 REAL_WORLD_CALIBRATION = 45.4545
 IN_GAME_SENS = 1
 
-##### Left stick: WASD (the game also reads the stick itself in hybrid mode)
-LUP = W
-LDOWN = S
-LLEFT = A
-LRIGHT = D
+##### Left stick: hybrid by default (the game reads it), R2 + L3 switches to WASD
+Presets/move_hybrid.txt
 L3 = LSHIFT                     # Sprint
 
 ##### Shoulders and triggers
 L = SPACE                       # Jump
 R = LMOUSE                      # Fire
 ZL = RMOUSE                     # Aim
-ZR = NONE                       # Weapon chord, see Presets/TestRange
+ZR = NONE                       # Weapon layer, see Presets/TestRange
 
 ##### Face buttons
 S = E                           # Use
 W = R                           # Reload
-N = Q                           # Last weapon
+N = G                           # Grenade
 E = LCONTROL                    # Crouch
 R3 = V                          # Melee
 
-##### D-pad
-UP = G                          # Grenade
-DOWN = F                        # Flashlight
-LEFT = SCROLLUP                 # Previous weapon
-RIGHT = SCROLLDOWN              # Next weapon
+##### D-pad: items. Left / right and the diagonals stay free for game items.
+UP = F                          # Flashlight
+DOWN = MMOUSE                   # Ping
 
 ##### Options / Create: tap / hold
 + = ESC M                       # Pause / map
@@ -42,12 +37,13 @@ TOUCHPAD_MODE = GRID_AND_STICK
 GRID_SIZE = 2 1
 GYRO_OFF = TOUCH
 CAPTURE = NONE
-T1,CAPTURE = MMOUSE             # Ping
-T2,CAPTURE = F1                 # Help
+T1,CAPTURE = F1                 # Help
+T2,CAPTURE = F2                 # Debug HUD
 
 MIC = F8                        # Reset TestRange counters
 
-##### R2 + face button: first press = odd slot, second press = even slot
+##### R2 + face button: first press = odd slot, second press = even slot.
+##### The light bar shows which button's second weapon comes next.
 Presets/TestRange/Neutral.txt
 
 Presets/aim.txt

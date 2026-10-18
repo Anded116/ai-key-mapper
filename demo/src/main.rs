@@ -5,8 +5,10 @@ mod hud;
 mod input;
 mod pad;
 mod player;
+mod render;
 mod settings;
 mod text;
+mod viewmodel;
 mod weapons;
 mod world;
 
@@ -17,13 +19,13 @@ use macroquad::prelude::*;
 
 use input::{Btn, Input};
 use pad::Pads;
-use player::{MoveIntent, Player};
-use settings::{MixedInput, Settings, MENU_LEN, YAW_DEG_PER_COUNT};
+use player::{MoveIntent, Player, Stance};
+use settings::{AnalogMode, MixedInput, Settings, MENU_LEN, WALK_THRESHOLD, YAW_DEG_PER_COUNT};
 use text::Txt;
 use weapons::{Arsenal, Fx, Stats, DEFS};
 use world::World;
 
-const SLOT_KEYS: [KeyCode; 9] = [
+const SLOT_KEYS: [KeyCode; 8] = [
     KeyCode::Key1,
     KeyCode::Key2,
     KeyCode::Key3,
@@ -32,7 +34,6 @@ const SLOT_KEYS: [KeyCode; 9] = [
     KeyCode::Key6,
     KeyCode::Key7,
     KeyCode::Key8,
-    KeyCode::Key9,
 ];
 
 pub const BINDINGS: &[(&str, &str)] = &[
@@ -48,9 +49,7 @@ pub const BINDINGS: &[(&str, &str)] = &[
     ("Удар", "V"),
     ("Граната", "G"),
     ("Фонарик", "F"),
-    ("Оружие 1–9", "1 … 9"),
-    ("Пред. / след. оружие", "колесо ↑ / ↓"),
-    ("Прошлое оружие", "Q"),
+    ("Оружие 1–8", "1 … 8"),
     ("Метка", "СКМ"),
     ("Статистика", "Tab (держать)"),
     ("Карта", "M"),
@@ -93,7 +92,6 @@ fn action_of(b: Btn) -> Option<&'static str> {
         Btn::Key(V) => "удар",
         Btn::Key(G) => "граната",
         Btn::Key(F) => "фонарик",
-        Btn::Key(Q) => "прошлое оружие",
         Btn::Key(Key1) => "оружие 1",
         Btn::Key(Key2) => "оружие 2",
         Btn::Key(Key3) => "оружие 3",
@@ -102,7 +100,6 @@ fn action_of(b: Btn) -> Option<&'static str> {
         Btn::Key(Key6) => "оружие 6",
         Btn::Key(Key7) => "оружие 7",
         Btn::Key(Key8) => "оружие 8",
-        Btn::Key(Key9) => "оружие 9",
         Btn::Key(Tab) => "статистика",
         Btn::Key(M) => "карта",
         Btn::Key(I) => "инвентарь",
@@ -116,8 +113,6 @@ fn action_of(b: Btn) -> Option<&'static str> {
         Btn::Mouse(MouseButton::Left) => "огонь",
         Btn::Mouse(MouseButton::Right) => "прицел",
         Btn::Mouse(MouseButton::Middle) => "метка",
-        Btn::WheelUp => "пред. оружие",
-        Btn::WheelDown => "след. оружие",
         _ => return None,
     };
     Some(name)
@@ -153,6 +148,12 @@ pub struct Game {
     pub fps: f32,
     pub cam: Camera3D,
     pub vfov: f32,
+    /// Weapon lag behind fast turns, radians (yaw, pitch).
+    pub sway: Vec2,
+    pub sprint_k: f32,
+    pub switched_at: f64,
+    pub force_ads: bool,
+    viewmodel_rt: Option<RenderTarget>,
 }
 
 impl Game {
@@ -261,6 +262,11 @@ impl Game {
                 k *= (self.hfov() / 2.0).tan() / (base / 2.0).tan();
             }
             self.p.look(inp.delta, k, self.s.invert_y);
+            // Turn rate in degrees per second drives the weapon lag.
+            let rate = inp.delta * k / dt.max(1e-4);
+            let target = (-rate * 0.00025).clamp(Vec2::splat(-0.09), Vec2::splat(0.09));
+            let target = vec2(target.x, if self.s.invert_y { target.y } else { -target.y });
+            self.sway += (target - self.sway) * (dt * 10.0).min(1.0);
         }
 
         let axis = |pos: KeyCode, neg: KeyCode| inp.key(pos) as i32 as f32 - inp.key(neg) as i32 as f32;
@@ -271,10 +277,26 @@ impl Game {
         let stick = if self.s.pad_move { self.pads.move_stick() } else { Vec2::ZERO };
         self.keys_vec = keys;
         self.stick_vec = stick;
-        let wish = match self.s.mixed {
-            MixedInput::Simultaneous => (keys + stick).clamp_length_max(1.0),
-            MixedInput::LastDeviceWins if self.pad_active => stick,
-            MixedInput::LastDeviceWins => keys,
+        let use_stick = stick != Vec2::ZERO
+            && match self.s.mixed {
+                // A stick mapped to WASD as well would always add up to full speed: the analog wins.
+                MixedInput::Simultaneous => true,
+                MixedInput::LastDeviceWins => self.pad_active,
+            };
+        let mut stick_walk = false;
+        let wish = if use_stick {
+            match self.s.analog {
+                AnalogMode::Smooth => stick,
+                AnalogMode::WalkRun => {
+                    stick_walk = stick.length() < WALK_THRESHOLD;
+                    stick.normalize()
+                }
+                AnalogMode::Full => stick.normalize(),
+            }
+        } else if self.s.mixed == MixedInput::LastDeviceWins && self.pad_active {
+            Vec2::ZERO
+        } else {
+            keys
         };
 
         let crouch_key = inp.key(KeyCode::LeftControl) || inp.key(KeyCode::C);
@@ -304,15 +326,19 @@ impl Game {
         } else {
             self.arms.aiming = inp.held(rmb);
         }
+        self.arms.aiming |= self.force_ads;
 
         let intent = MoveIntent {
             wish,
             jump: inp.key_hit(KeyCode::Space),
             crouch: self.crouch_on,
             sprint: self.sprint_on,
-            walk: inp.key(KeyCode::LeftAlt),
+            walk: inp.key(KeyCode::LeftAlt) || stick_walk,
         };
         self.p.step(dt, &intent, &self.world);
+        let sprinting = self.p.stance == Stance::Sprint && self.p.horizontal_speed() > 4.0;
+        let target = if sprinting { 1.0 } else { 0.0 };
+        self.sprint_k += (target - self.sprint_k) * (dt * 8.0).min(1.0);
 
         self.weapons_input(now);
         self.misc_input(now);
@@ -326,9 +352,6 @@ impl Game {
                 slot = Some(i);
             }
         }
-        let wheel_up = inp.hit(Btn::WheelUp);
-        let wheel_down = inp.hit(Btn::WheelDown);
-        let last = inp.key_hit(KeyCode::Q);
         let reload = inp.key_hit(KeyCode::R);
         let lmb = Btn::Mouse(MouseButton::Left);
         let trigger = if self.arms.def().auto { inp.held(lmb) } else { inp.hit(lmb) };
@@ -336,17 +359,9 @@ impl Game {
         let grenade = inp.key_hit(KeyCode::G);
 
         if let Some(i) = slot {
-            self.arms.select(now, i, &mut self.stats);
-        }
-        if wheel_up {
-            self.arms.cycle(now, -1, &mut self.stats);
-        }
-        if wheel_down {
-            self.arms.cycle(now, 1, &mut self.stats);
-        }
-        if last {
-            let prev = self.arms.prev;
-            self.arms.select(now, prev, &mut self.stats);
+            if self.arms.select(now, i, &mut self.stats) {
+                self.switched_at = now;
+            }
         }
         if reload {
             self.arms.start_reload(now, &mut self.stats);
@@ -442,20 +457,100 @@ impl Game {
         self.world.draw(now);
         weapons::draw_fx(now, &self.fx);
         set_default_camera();
+
+        let scoped = self.arms.cur == 5 && self.arms.ads > 0.85;
+        if !scoped {
+            self.render_viewmodel(now);
+        }
+    }
+
+    /// The weapon gets its own pass with a cleared depth buffer so it never clips into walls.
+    fn render_viewmodel(&mut self, now: f64) {
+        let dpi = macroquad::miniquad::window::dpi_scale();
+        let (w, h) = ((screen_width() * dpi).round() as u32, (screen_height() * dpi).round() as u32);
+        let stale = self.viewmodel_rt.as_ref().is_none_or(|rt| rt.texture.width() as u32 != w || rt.texture.height() as u32 != h);
+        if stale {
+            let rt = render_target_ex(w, h, RenderTargetParams { sample_count: 4, depth: true });
+            rt.texture.set_filter(FilterMode::Linear);
+            self.viewmodel_rt = Some(rt);
+        }
+        let rt = self.viewmodel_rt.clone().expect("render target created above");
+        set_camera(&Camera3D {
+            position: Vec3::ZERO,
+            target: -Vec3::Z,
+            up: Vec3::Y,
+            fovy: 68f32.to_radians(),
+            aspect: Some(w as f32 / h as f32),
+            z_near: 0.01,
+            z_far: 10.0,
+            render_target: Some(rt.clone()),
+            ..Default::default()
+        });
+        clear_background(Color::new(0.0, 0.0, 0.0, 0.0));
+        self.draw_viewmodel(now);
+        set_default_camera();
+        draw_texture_ex(
+            &rt.texture,
+            0.0,
+            0.0,
+            WHITE,
+            DrawTextureParams { dest_size: Some(vec2(screen_width(), screen_height())), flip_y: true, ..Default::default() },
+        );
     }
 }
 
-/// `--screenshot <file.png> [--overlay help|map|inv|pause]`: render, save the frame, exit.
+/// `--screenshot <file.png> [--overlay help|map|inv|pause] [--weapon 1-8]
+/// [--anim fire|reload|swing|throw|ads|switch] [--after <seconds>]`: render, save the frame, exit.
 /// Lets an agent check what the game shows without a screen-capture tool.
 struct Shot {
     path: String,
     overlay: Option<String>,
+    weapon: Option<usize>,
+    anim: Option<String>,
+    after: f64,
 }
+
+const SHOT_START: f64 = 1.5;
 
 fn parse_shot() -> Option<Shot> {
     let args: Vec<String> = std::env::args().collect();
     let value = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned();
-    Some(Shot { path: value("--screenshot")?, overlay: value("--overlay") })
+    Some(Shot {
+        path: value("--screenshot")?,
+        overlay: value("--overlay"),
+        weapon: value("--weapon").and_then(|v| v.parse::<usize>().ok()).map(|n| n.clamp(1, 8) - 1),
+        anim: value("--anim"),
+        after: value("--after").and_then(|v| v.parse().ok()).unwrap_or(0.15),
+    })
+}
+
+impl Game {
+    fn start_shot_anim(&mut self, now: f64, anim: &str) {
+        let eye = self.p.eye();
+        let dir = self.p.look_dir();
+        match anim {
+            "fire" => {
+                self.arms.fire(now, eye, dir, 0.0, &mut self.world, &mut self.fx, &mut self.stats);
+            }
+            "reload" => {
+                self.arms.ammo[self.arms.cur] = 0;
+                self.arms.start_reload(now, &mut self.stats);
+            }
+            "swing" => {
+                self.arms.quick_melee(now, eye, dir, &mut self.world, &mut self.fx, &mut self.stats);
+            }
+            "throw" => {
+                self.arms.throw_grenade(now, eye, dir, &mut self.fx, &mut self.stats);
+            }
+            "ads" => self.force_ads = true,
+            "switch" => {
+                let next = (self.arms.cur + 1) % DEFS.len();
+                self.arms.select(now, next, &mut self.stats);
+                self.switched_at = now;
+            }
+            _ => {}
+        }
+    }
 }
 
 fn window_conf() -> macroquad::window::Conf {
@@ -502,6 +597,11 @@ async fn main() {
         fps: 0.0,
         cam: Camera3D::default(),
         vfov: 1.0,
+        sway: Vec2::ZERO,
+        sprint_k: 0.0,
+        switched_at: -10.0,
+        force_ads: false,
+        viewmodel_rt: None,
     };
     debug_assert_eq!(DEFS.len(), SLOT_KEYS.len());
 
@@ -515,7 +615,11 @@ async fn main() {
             _ => {}
         }
     }
-    let mut frame = 0u32;
+    if let Some(w) = shot.as_ref().and_then(|s| s.weapon) {
+        g.arms.cur = w;
+    }
+    let started = get_time();
+    let mut anim_started = false;
 
     loop {
         let now = get_time();
@@ -538,10 +642,19 @@ async fn main() {
 
         g.render_world(now);
         g.draw_hud(now);
-        frame += 1;
-        if let Some(s) = shot.as_ref().filter(|_| frame == 60) {
-            get_screen_data().export_png(&s.path);
-            std::process::exit(0);
+        if let Some(s) = &shot {
+            let t = now - started;
+            if let (Some(anim), false) = (&s.anim, anim_started) {
+                if t >= SHOT_START {
+                    g.start_shot_anim(now, anim);
+                    anim_started = true;
+                }
+            }
+            let at = if s.anim.is_some() { SHOT_START + s.after } else { SHOT_START };
+            if t >= at && (anim_started || s.anim.is_none()) {
+                get_screen_data().export_png(&s.path);
+                std::process::exit(0);
+            }
         }
         next_frame().await;
     }

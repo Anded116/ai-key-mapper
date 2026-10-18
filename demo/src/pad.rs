@@ -4,6 +4,8 @@ use macroquad::prelude::*;
 use crate::input::Input;
 
 const DEADZONE: f32 = 0.15;
+/// Sticks rarely reach a full 1.0 on diagonals; the last 10% counts as full tilt.
+const DEADZONE_OUTER: f32 = 0.1;
 const ACTIVITY: f32 = 0.25;
 
 pub struct PadInfo {
@@ -71,6 +73,6 @@ impl Pads {
         if len < DEADZONE {
             return Vec2::ZERO;
         }
-        p.left / len * ((len - DEADZONE) / (1.0 - DEADZONE)).min(1.0)
+        p.left / len * ((len - DEADZONE) / (1.0 - DEADZONE - DEADZONE_OUTER)).min(1.0)
     }
 }
