@@ -26,6 +26,8 @@ fn main() {
             state::set_prompts,
             state::set_paused,
             state::calibrate,
+            state::test_turn,
+            state::set_real_world,
             state::engine_log
         ])
         .build(tauri::generate_context!())

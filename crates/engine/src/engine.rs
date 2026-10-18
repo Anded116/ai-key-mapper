@@ -36,6 +36,8 @@ const PAD_HALF_X: u16 = 960;
 const PAD_HALF_Y: u16 = 540;
 /// A calibrate press shorter than this toggles calibration instead of holding it.
 const CAL_TAP_S: f64 = 0.3;
+/// Calibration turn speed, deg/s: a full circle in half a second, quick but not a flick.
+const TURN_SPEED: f32 = 720.0;
 
 /// What the UI shows about the engine.
 #[derive(Clone, Debug, Default)]
@@ -46,6 +48,8 @@ pub struct Snapshot {
     pub gyro_calibrating: bool,
     pub gyro_bias: [f32; 3],
     pub flick_active: bool,
+    /// A calibration turn is under way.
+    pub turning: bool,
     /// Paired button (in the weapon layer) whose second slot the next press gives.
     pub next_pair: Option<Btn>,
     pub movement: MoveMode,
@@ -91,6 +95,8 @@ pub struct Engine {
     cal_ending_press: bool,
     /// Movement mode switched at runtime (ToggleMovement); `None` = the profile's.
     movement_override: Option<MoveMode>,
+    /// Degrees of the calibration turn still to send.
+    turn_left: f32,
 }
 
 impl Engine {
@@ -112,6 +118,7 @@ impl Engine {
             cal_toggle: false,
             cal_ending_press: false,
             movement_override: None,
+            turn_left: 0.0,
         }
     }
 
@@ -139,6 +146,7 @@ impl Engine {
             gyro_calibrating: self.gyro.calibrating(),
             gyro_bias: self.gyro.bias(),
             flick_active: self.flick.active(),
+            turning: self.turn_left > 0.0,
             next_pair: self.next_pair(),
             movement: self.movement_mode(),
             weapon: self.buttons.last_weapon(),
@@ -250,6 +258,12 @@ impl Engine {
     }
 
     /// Same as a tap of the calibrate button: starts calibrating, or finishes a running one.
+/// Turn the camera by exactly `degrees` as the profile's calibration sees it, over a short moment:
+    /// if the game turns more or less, `real_world` is off by that ratio.
+    pub fn test_turn(&mut self, degrees: f32) {
+        self.turn_left = degrees.max(0.0);
+    }
+
     pub fn toggle_calibration(&mut self, now: f64) {
         if self.gyro.calibrating() {
             self.gyro.end_calibration(now, TRIM_S, TRIM_S);
@@ -320,8 +334,14 @@ impl Engine {
         let gyro_on = self.profile.gyro.off.is_none_or(|b| !self.pressed.contains(&b));
         let (gx, gy) = self.gyro.update(now, dt, s.gyro, &self.profile.gyro, gyro_on);
         let fx = self.flick.update(dt, s.right, &self.profile.flick);
+        let turn = (TURN_SPEED * dt).min(self.turn_left);
+        self.turn_left -= turn;
         let k = self.profile.calibration.counts_per_degree();
-        self.frac.0 += (gx + fx) * k;
+        self.frac.0 += (gx + fx + turn) * k;
+        if turn > 0.0 && self.turn_left <= 0.0 {
+            // the turn ends on a whole count: a test circle must not come out one count short
+            self.frac.0 = self.frac.0.round();
+        }
         self.frac.1 += gy * k;
         let (dx, dy) = (self.frac.0.trunc(), self.frac.1.trunc());
         self.frac.0 -= dx;
@@ -409,6 +429,21 @@ mod tests {
         e.update(0.0, &s, &mut sink);
         e.update(0.01, &state(PadButtons::NONE, 10_000), &mut sink);
         assert_eq!(names(&mut sink), ["+F2", "-F2"]);
+    }
+
+    #[test]
+    fn test_turn_sends_exactly_a_circle() {
+        let p = Profile::parse("[calibration]\nreal_world = 10\nin_game_sens = 2\n[gyro]\nenabled = false\n[flick]\nenabled = false").unwrap();
+        let mut e = Engine::new(p);
+        let mut sink = RecordSink::default();
+        e.update(0.0, &state(PadButtons::NONE, 0), &mut sink);
+        e.test_turn(360.0);
+        assert!(e.snapshot().turning);
+        for i in 1..=200 {
+            e.update(i as f64 * 0.005, &state(PadButtons::NONE, i * 5000), &mut sink);
+        }
+        assert!(!e.snapshot().turning);
+        assert_eq!(sink.moved.0, 1800, "360° × 10 / 2 counts");
     }
 
     #[test]

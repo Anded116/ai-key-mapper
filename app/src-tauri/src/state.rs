@@ -82,6 +82,8 @@ pub struct EngineInfo {
     /// Геймпад скрыт от игр через HidHide.
     pub hidden: bool,
     pub calibrating: bool,
+    /// Идёт проверочный поворот на 360°.
+    pub turning: bool,
     /// `hybrid` | `wasd`
     pub movement: Option<String>,
 }
@@ -120,6 +122,7 @@ impl From<&Frame> for State {
                 next_double: snap.next_pair.map(|b| b.name().into()),
             };
             s.engine.calibrating = snap.gyro_calibrating;
+            s.engine.turning = snap.turning;
             s.engine.movement = Some(format!("{:?}", snap.movement).to_lowercase());
         }
         s
@@ -141,6 +144,9 @@ pub struct Bindings {
     pub layers: BTreeMap<String, BTreeMap<String, Entry>>,
     /// Клавиши левого стика в режиме WASD: вперёд, влево, назад, вправо.
     pub move_keys: Vec<String>,
+    /// Отсчётов мыши на градус при чувствительности 1 и чувствительность в игре.
+    pub real_world: f32,
+    pub in_game_sens: f32,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -234,6 +240,8 @@ impl Bindings {
                 .map(|l| (l.button.name().to_string(), table(&l.bindings, &format!("layer.{}", l.button.name()))))
                 .collect(),
             move_keys: p.movement.keys.iter().map(|k| k.name().to_string()).collect(),
+            real_world: p.calibration.real_world,
+            in_game_sens: p.calibration.in_game_sens,
         })
     }
 }
@@ -332,6 +340,21 @@ pub fn set_paused(paused: bool, mapper: tauri::State<'_, Mapper>) {
 #[tauri::command]
 pub fn calibrate(mapper: tauri::State<'_, Mapper>) {
     mapper.send(Command::ToggleCalibration);
+}
+
+/// Проверочный поворот на 360°: движок сделает его через секунду после того, как игра получит фокус.
+#[tauri::command]
+pub fn test_turn(mapper: tauri::State<'_, Mapper>) {
+    mapper.send(Command::TestTurn(360.0));
+}
+
+/// Новый `real_world` профиля, пересчитанный по проверочному повороту.
+#[tauri::command]
+pub fn set_real_world(file: String, value: f32) -> Result<(), String> {
+    if !(value.is_finite() && value > 0.0) {
+        return Err(format!("real_world должен быть больше нуля, а не {value}"));
+    }
+    edit::set_real_world(&profile_file(&file)?, value)
 }
 
 /// Журнал движка с начала работы, старые строки первыми.

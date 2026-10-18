@@ -93,6 +93,22 @@ pub fn set(path: &Path, button: &str, layer: Option<&str>, edit: &Edit, note: &s
     })
 }
 
+/// `calibration.real_world`: значение меняется, комментарий у строки остаётся.
+pub fn set_real_world(path: &Path, value: f32) -> Result<(), String> {
+    let rounded = (f64::from(value) * 10_000.0).round() / 10_000.0;
+    write(path, |doc| {
+        if !doc.contains_table("calibration") {
+            doc.insert("calibration", toml_edit::table());
+        }
+        let table = doc["calibration"].as_table_mut().expect("calibration is a table");
+        let mut v = Value::from(rounded);
+        if let Some(old) = table.get("real_world").and_then(|i| i.as_value()) {
+            *v.decor_mut() = old.decor().clone();
+        }
+        table.insert("real_world", Item::Value(v));
+    })
+}
+
 /// Язык подсказок игры: `prompts = "ru"` или `"en"` в корне профиля.
 pub fn set_prompts(path: &Path, lang: &str) -> Result<(), String> {
     write(path, |doc| {
@@ -131,6 +147,9 @@ mod tests {
         assert!(text.contains("r1 = \"MouseLeft\"                # огонь\n"), "{text}");
         assert!(text.contains("options = { tap = \"Esc\", hold = \"M\", hold_ms = 500 }   # пауза / карта"), "{text}");
         assert!(text.contains("[layer.r2]\ndpad_down = \"Z\""), "{text}");
+        std::fs::write(&path, std::fs::read_to_string(&path).unwrap() + "\n[calibration]\nreal_world = 40.0               # подобрано фликом\n").unwrap();
+        set_real_world(&path, 12.5).unwrap();
+        assert!(std::fs::read_to_string(&path).unwrap().contains("real_world = 12.5               # подобрано фликом"));
         set_prompts(&path, "en").unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.find("prompts = \"en\"").unwrap() < text.find("[buttons]").unwrap(), "{text}");

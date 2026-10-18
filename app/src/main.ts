@@ -4,6 +4,7 @@ import { mountPad } from './pad'
 import { mountEditor } from './editor'
 import { renderInspector } from './inspector'
 import { mountChat } from './chat'
+import { mountTurn } from './turn'
 import { keyFace, setPromptLang } from './keys'
 import type { Bindings, PadState } from './types'
 
@@ -34,6 +35,7 @@ const pad = mountPad(
   (id) => { selected = id; editor.open(id, view()) },
 )
 mountChat()
+const turn = mountTurn($('turn'), () => viewed, () => Boolean(viewed && viewed.file === activeFile), () => void refresh())
 
 const view = () => heldLayer ?? pinnedLayer
 
@@ -77,6 +79,7 @@ async function show(file: string | null) {
   drawProfiles()
   relabel()
   inspect()
+  turn.render()
 }
 
 async function refresh() {
@@ -218,6 +221,8 @@ listen<string>('log', ({ payload }) => {
 // Событий ~60 в секунду: рисуем только последнее за кадр.
 let pending: PadState | null = null
 listen<PadState>('state', (e) => {
+  // поворот следим по каждому событию: окно может быть свёрнуто, а кадры тогда не рисуются
+  turn.draw(e.payload)
   if (!pending) requestAnimationFrame(() => {
     if (pending) { drawPad(pending); drawTop(pending) }
     pending = null

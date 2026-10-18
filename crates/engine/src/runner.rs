@@ -29,6 +29,9 @@ pub enum Command {
     SetPaused(bool),
     /// Like a tap on PS: start gyro calibration, or finish the running one.
     ToggleCalibration,
+    /// Turn the camera by this many degrees once the game is in focus (a second after it gets
+    /// focus, so the click in the app window does not count): checks `real_world`.
+    TestTurn(f32),
     Stop,
 }
 
@@ -307,6 +310,8 @@ struct Loop {
     /// Running game whose profile hides the pad from it (auto mode).
     hide_game: Option<PathBuf>,
     profile_rev: u32,
+    /// Armed calibration turn: degrees, and when to start once the game is in focus.
+    turn: Option<(f32, Option<Instant>)>,
 }
 
 impl Loop {
@@ -355,6 +360,7 @@ impl Loop {
             waiting_pad: false,
             hide_game: None,
             profile_rev: 0,
+            turn: None,
         }
     }
 
@@ -384,6 +390,10 @@ impl Loop {
                         e.toggle_calibration(start.elapsed().as_secs_f64());
                     }
                 }
+                Ok(Command::TestTurn(deg)) => {
+                    self.turn = Some((deg, None));
+                    self.log(&format!("переключись в игру и не трогай мышь: через секунду камера повернётся на {deg:.0}°"));
+                }
                 Err(TryRecvError::Empty) => {}
             }
             let now = start.elapsed().as_secs_f64();
@@ -393,6 +403,7 @@ impl Loop {
                 self.follow_focus();
                 self.follow_games();
             }
+            self.follow_turn();
             self.follow_hiding();
 
             if self.pad.is_none() && !self.open_pad(&mut api) {
@@ -499,6 +510,26 @@ impl Loop {
                 }
             }
             self.hide_game = path;
+        }
+    }
+
+    fn follow_turn(&mut self) {
+        let Some((deg, at)) = self.turn else { return };
+        if !self.focused || self.paused {
+            self.turn = Some((deg, None));
+            return;
+        }
+        match at {
+            None => self.turn = Some((deg, Some(Instant::now() + Duration::from_secs(1)))),
+            Some(at) if Instant::now() >= at => {
+                self.turn = None;
+                if let Some(e) = &mut self.engine {
+                    e.test_turn(deg);
+                    let k = e.profile.calibration.counts_per_degree();
+                    self.log(&format!("поворот на {deg:.0}°: {:.0} отсчётов мыши", deg * k));
+                }
+            }
+            Some(_) => {}
         }
     }
 

@@ -10,7 +10,7 @@ export interface PadState {
   outputs: string[]
   profile: string | null
   weapons: { current: number | null; next_double: string | null }
-  engine: { focused: boolean; paused: boolean; hidden: boolean; calibrating: boolean; movement: string | null }
+  engine: { focused: boolean; paused: boolean; hidden: boolean; calibrating: boolean; turning: boolean; movement: string | null }
 }
 
 /** Строка ленты чата из события `agent`. */
@@ -27,6 +27,8 @@ export interface Bindings {
   buttons: Record<string, BindingEntry>
   layers: Record<string, Record<string, BindingEntry>>
   move_keys: string[]
+  real_world: number
+  in_game_sens: number
 }
 
 export interface BindingEntry {
