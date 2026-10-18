@@ -1,0 +1,9 @@
+[package]
+name = "testrange"
+version = "0.1.0"
+edition = "2021"
+description = "3D shooter test range for debugging controller-to-keyboard/mouse mappings"
+
+[dependencies]
+macroquad = "0.4.16"
+gilrs = "0.11.2"
