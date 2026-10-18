@@ -4,6 +4,7 @@ use macroquad::prelude::*;
 use crate::input::btn_name;
 use crate::player::Stance;
 use crate::settings::{MixedInput, MENU_LEN, YAW_DEG_PER_COUNT};
+use crate::viewmodel::{SWING_STRIKE_END, SWING_TIME, SWING_WINDUP};
 use crate::weapons::{Kind, DEFS};
 use crate::world::{FLOOR_MAX, FLOOR_MIN, TARGET_HP};
 use crate::{Game, BINDINGS};
@@ -74,6 +75,7 @@ impl Game {
         if scoped {
             self.draw_scope(w, h);
         }
+        self.draw_slash(now, w, h);
         self.draw_crosshair(now, w, h, scoped);
         self.draw_weapon_panel(now, w, h);
         let since_switch = (now - self.switched_at) as f32;
@@ -149,6 +151,29 @@ impl Game {
             for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
                 draw_line(cx + sx * 7.0, cy + sy * 7.0, cx + sx * 15.0, cy + sy * 15.0, 2.5, c);
             }
+        }
+    }
+
+    /// Screen-space slash arc that follows the blade: upper right through the centre to lower left.
+    fn draw_slash(&self, now: f64, w: f32, h: f32) {
+        let q = (now - self.arms.swing_at) as f32 / SWING_TIME;
+        let end = SWING_STRIKE_END + 0.25;
+        if !(SWING_WINDUP..end).contains(&q) {
+            return;
+        }
+        let head = ((q - SWING_WINDUP) / (SWING_STRIKE_END - SWING_WINDUP)).min(1.0);
+        let fade = if q < SWING_STRIKE_END { 1.0 } else { 1.0 - (q - SWING_STRIKE_END) / 0.25 };
+        let (a, c, b) = (vec2(w * 0.7, h * 0.22), vec2(w * 0.56, h * 0.58), vec2(w * 0.28, h * 0.74));
+        let point = |t: f32| a * (1.0 - t) * (1.0 - t) + c * 2.0 * t * (1.0 - t) + b * t * t;
+        let tail = (head - 0.45).max(0.0);
+        let steps = 24;
+        for i in 0..steps {
+            let t0 = tail + (head - tail) * i as f32 / steps as f32;
+            let t1 = tail + (head - tail) * (i + 1) as f32 / steps as f32;
+            let k = (i + 1) as f32 / steps as f32;
+            let color = Color::new(1.0, 1.0, 1.0, 0.55 * k * fade);
+            let (p0, p1) = (point(t0), point(t1));
+            draw_line(p0.x, p0.y, p1.x, p1.y, 2.0 + 12.0 * k, color);
         }
     }
 

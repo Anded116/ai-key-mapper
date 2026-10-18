@@ -370,7 +370,7 @@ impl Game {
         let eye = self.p.eye();
         let dir = self.p.look_dir();
         if melee {
-            self.arms.quick_melee(now, eye, dir, &mut self.world, &mut self.fx, &mut self.stats);
+            self.arms.quick_melee(now, &mut self.stats);
         }
         if grenade {
             self.arms.throw_grenade(now, eye, dir, &mut self.fx, &mut self.stats);
@@ -444,10 +444,12 @@ impl Game {
         let aspect = screen_width() / screen_height();
         self.vfov = 2.0 * ((self.hfov() / 2.0).tan() / aspect).atan();
         let eye = self.p.eye();
+        let (punch_yaw, punch_roll) = viewmodel::swing_punch((now - self.arms.swing_at) as f32);
+        let look = Quat::from_rotation_y(-punch_yaw) * self.p.look_dir();
         self.cam = Camera3D {
             position: eye,
-            target: eye + self.p.look_dir(),
-            up: Vec3::Y,
+            target: eye + look,
+            up: Quat::from_axis_angle(look, punch_roll) * Vec3::Y,
             fovy: self.vfov,
             z_near: 0.05,
             z_far: 1000.0,
@@ -510,7 +512,7 @@ struct Shot {
     after: f64,
 }
 
-const SHOT_START: f64 = 1.5;
+const SHOT_START: f64 = 2.5;
 
 fn parse_shot() -> Option<Shot> {
     let args: Vec<String> = std::env::args().collect();
@@ -537,7 +539,7 @@ impl Game {
                 self.arms.start_reload(now, &mut self.stats);
             }
             "swing" => {
-                self.arms.quick_melee(now, eye, dir, &mut self.world, &mut self.fx, &mut self.stats);
+                self.arms.quick_melee(now, &mut self.stats);
             }
             "throw" => {
                 self.arms.throw_grenade(now, eye, dir, &mut self.fx, &mut self.stats);
@@ -637,6 +639,8 @@ async fn main() {
             g.gameplay(now, dt);
         }
         g.arms.update(now, dt);
+        let (eye, dir) = (g.p.eye(), g.p.look_dir());
+        g.arms.resolve_strike(now, eye, dir, &mut g.world, &mut g.fx, &mut g.stats);
         g.world.update(now);
         weapons::update_fx(now, dt, &mut g.world, &mut g.fx, &mut g.stats);
 

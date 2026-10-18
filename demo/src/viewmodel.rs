@@ -19,7 +19,9 @@ const SKIN: Color = Color::new(0.86, 0.66, 0.52, 1.0);
 const SLEEVE: Color = Color::new(0.2, 0.25, 0.32, 1.0);
 
 const HIP: Vec3 = Vec3::new(0.17, -0.17, -0.42);
-const SWING_TIME: f32 = 0.32;
+pub const SWING_TIME: f32 = 0.42;
+pub const SWING_WINDUP: f32 = 0.22;
+pub const SWING_STRIKE_END: f32 = 0.55;
 const THROW_TIME: f32 = 0.45;
 
 /// One box of a weapon model in weapon space: -Z is the barrel, +Y is up.
@@ -65,7 +67,7 @@ const KNIFE: Model = Model {
     parts: &[
         p([0.0, 0.0, 0.03], [0.028, 0.035, 0.11], DARK),
         p([0.0, 0.005, -0.03], [0.06, 0.015, 0.012], METAL),
-        p([0.0, 0.012, -0.15], [0.006, 0.035, 0.22], STEEL),
+        p([0.0, 0.014, -0.16], [0.012, 0.045, 0.24], STEEL),
         p([0.0, 0.03, -0.13], [0.008, 0.008, 0.17], METAL),
     ],
     muzzle: Vec3::new(0.0, 0.012, -0.26),
@@ -280,18 +282,20 @@ impl Game {
         let throw_q = ((now - a.throw_at) as f32 / THROW_TIME).clamp(0.0, 1.0);
         let throwing = throw_q < 1.0;
         let is_knife = matches!(self.arms.def().kind, Kind::Melee { .. });
-        for (busy, q) in [(swinging && !is_knife, swing_q), (throwing, throw_q)] {
-            if busy {
-                let k = (q * PI).sin();
-                pos.y -= 0.14 * k;
-                pos.x += 0.06 * k;
-                roll += 0.35 * k;
-            }
+        if swinging && !is_knife {
+            // The gun drops out of view so the knife is the only thing moving.
+            let k = smooth(swing_q / 0.15) * (1.0 - smooth((swing_q - 0.75) / 0.25));
+            pos.y -= 0.4 * k;
+            pitch -= 0.7 * k;
+        }
+        if throwing {
+            let k = (throw_q * PI).sin();
+            pos.y -= 0.14 * k;
+            pos.x += 0.06 * k;
+            roll += 0.35 * k;
         }
 
-        if is_knife && swinging {
-            draw_model(&KNIFE, swing_matrix(swing_q), 0.0, false, 0.0);
-        } else {
+        if !(is_knife && swinging) {
             let m = Mat4::from_translation(pos) * Mat4::from_euler(EulerRot::YXZ, yaw, pitch, roll);
             draw_model(model, m, mag_drop, true, ads);
             if now < self.fx.muzzle_until {
@@ -300,8 +304,8 @@ impl Game {
                 draw_sphere(mz, 0.09, None, Color::new(1.0, 0.6, 0.2, 0.35));
             }
         }
-        if swinging && !is_knife {
-            draw_model(&KNIFE, swing_matrix(swing_q), 0.0, false, 0.0);
+        if swinging {
+            draw_swing(swing_q);
         }
         if throwing && throw_q < 0.6 {
             let k = smooth(throw_q / 0.6);
@@ -311,13 +315,48 @@ impl Game {
     }
 }
 
-/// Diagonal slash from the upper right to the lower left, blade raised and leading.
+/// Swing keyframes: (phase, position, yaw/pitch/roll). Wind-up raises the blade at the
+/// upper right, the strike cuts through the centre to the lower left, then it leaves the frame.
+const SWING_KEYS: [(f32, Vec3, Vec3); 4] = [
+    (0.0, Vec3::new(0.3, -0.4, -0.4), Vec3::new(0.4, 0.3, -0.8)),
+    (SWING_WINDUP, Vec3::new(0.26, 0.06, -0.4), Vec3::new(0.5, 1.0, -0.9)),
+    (SWING_STRIKE_END, Vec3::new(-0.2, -0.22, -0.46), Vec3::new(-0.6, -0.4, -0.2)),
+    (1.0, Vec3::new(-0.26, -0.55, -0.42), Vec3::new(-0.7, -0.6, 0.0)),
+];
+
 fn swing_matrix(q: f32) -> Mat4 {
-    let e = smooth(q);
-    let lift = (q * PI).sin();
-    let pos = vec3(0.24 - 0.42 * e, -0.06 - 0.14 * e, -0.36 - 0.12 * lift);
-    let yaw = 0.7 - 1.5 * e;
-    let pitch = 0.5 - 0.6 * e;
-    let roll = -1.2 + 0.6 * e;
-    Mat4::from_translation(pos) * Mat4::from_euler(EulerRot::YXZ, yaw, pitch, roll)
+    let i = SWING_KEYS.iter().rposition(|k| k.0 <= q).unwrap_or(0).min(SWING_KEYS.len() - 2);
+    let (a, b) = (SWING_KEYS[i], SWING_KEYS[i + 1]);
+    let t = ((q - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
+    // The strike is fast out of the wind-up and slows into the follow-through.
+    let e = if i == 1 { 1.0 - (1.0 - t).powi(3) } else { smooth(t) };
+    let pos = a.1.lerp(b.1, e);
+    let rot = a.2.lerp(b.2, e);
+    Mat4::from_translation(pos) * Mat4::from_euler(EulerRot::YXZ, rot.x, rot.y, rot.z)
+}
+
+fn draw_swing(q: f32) {
+    draw_model(&KNIFE, swing_matrix(q), 0.0, false, 0.0);
+    if !(SWING_WINDUP..SWING_STRIKE_END + 0.2).contains(&q) {
+        return;
+    }
+    // Motion smear: fading copies of the blade along the recent path.
+    let blade = &KNIFE.parts[2];
+    for i in 1..=5 {
+        let past = q - i as f32 * 0.03;
+        if past < SWING_WINDUP + 0.04 {
+            break;
+        }
+        let m = swing_matrix(past) * Mat4::from_translation(blade.pos);
+        let a = 0.32 * (1.0 - i as f32 / 6.0);
+        draw_box_m(&m, blade.size * vec3(1.5, 1.1, 1.0), Color::new(0.92, 0.95, 1.0, a));
+    }
+}
+
+/// View punch during the strike: (yaw, roll) in radians, sells the impact.
+pub fn swing_punch(since_swing: f32) -> (f32, f32) {
+    let q = since_swing / SWING_TIME;
+    let s = ((q - SWING_WINDUP) / (SWING_STRIKE_END - SWING_WINDUP + 0.15)).clamp(0.0, 1.0);
+    let bump = (s * PI).sin();
+    (-0.03 * bump, 0.035 * bump)
 }

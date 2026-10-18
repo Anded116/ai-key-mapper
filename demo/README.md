@@ -29,7 +29,7 @@ cargo run --release -p testrange
 testrange.exe --screenshot shot.png --weapon 5 --anim reload --after 0.6
 ```
 
-Ждёт 1,5 с прогрева, запускает анимацию, через `--after` секунд сохраняет кадр и выходит. Без `--anim` снимает сразу после прогрева.
+Ждёт 2,5 с прогрева, запускает анимацию, через `--after` секунд сохраняет кадр и выходит. Без `--anim` снимает сразу после прогрева.
 - `--overlay`: `help`, `map`, `inv`, `pause`;
 - `--weapon`: 1–8;
 - `--anim`: `fire`, `reload`, `swing`, `throw`, `ads`, `switch`.

@@ -68,6 +68,8 @@ pub const DEFS: [Def; 8] = [
 pub const SWITCH_TIME: f64 = 0.25;
 const GRENADE_COOLDOWN: f64 = 0.8;
 const MELEE_COOLDOWN: f64 = 0.5;
+/// From the button press to the blade crossing the centre of the screen.
+const STRIKE_DELAY: f64 = 0.12;
 
 pub struct Arsenal {
     pub cur: usize,
@@ -83,6 +85,8 @@ pub struct Arsenal {
     /// Start of the last knife swing and grenade throw, for the viewmodel.
     pub swing_at: f64,
     pub throw_at: f64,
+    /// Melee hit waiting for the swing to reach the target: (time, range, damage).
+    pub pending_strike: Option<(f64, f32, f32)>,
 }
 
 #[derive(Default)]
@@ -153,6 +157,7 @@ impl Arsenal {
             kick: 0.0,
             swing_at: -10.0,
             throw_at: -10.0,
+            pending_strike: None,
         }
     }
 
@@ -228,7 +233,7 @@ impl Arsenal {
             Kind::Melee { range } => {
                 stats.melee += 1;
                 self.swing_at = now;
-                strike(now, eye, dir, range, d.dmg, world, fx, stats);
+                self.pending_strike = Some((now + STRIKE_DELAY, range, d.dmg));
             }
             Kind::Hitscan => {
                 stats.shots += 1;
@@ -256,16 +261,26 @@ impl Arsenal {
         true
     }
 
-    pub fn quick_melee(&mut self, now: f64, eye: Vec3, dir: Vec3, world: &mut World, fx: &mut Fx, stats: &mut Stats) -> bool {
+    pub fn quick_melee(&mut self, now: f64, stats: &mut Stats) -> bool {
         if now < self.melee_until || now < self.switch_until {
             return false;
         }
         self.melee_until = now + MELEE_COOLDOWN;
         self.swing_at = now;
+        self.pending_strike = Some((now + STRIKE_DELAY, 2.3, 55.0));
         self.reload_until = None;
         stats.melee += 1;
-        strike(now, eye, dir, 2.3, 55.0, world, fx, stats);
         true
+    }
+
+    /// Melee damage lands when the blade crosses the screen, not on the button press.
+    pub fn resolve_strike(&mut self, now: f64, eye: Vec3, dir: Vec3, world: &mut World, fx: &mut Fx, stats: &mut Stats) {
+        if let Some((at, range, dmg)) = self.pending_strike {
+            if now >= at {
+                self.pending_strike = None;
+                strike(now, eye, dir, range, dmg, world, fx, stats);
+            }
+        }
     }
 
     pub fn throw_grenade(&mut self, now: f64, eye: Vec3, dir: Vec3, fx: &mut Fx, stats: &mut Stats) -> bool {
