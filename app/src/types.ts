@@ -29,6 +29,8 @@ export interface Bindings {
   move_keys: string[]
   real_world: number
   in_game_sens: number
+  hide: boolean
+  wasd: boolean
 }
 
 export interface BindingEntry {

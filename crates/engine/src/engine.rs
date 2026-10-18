@@ -315,6 +315,7 @@ impl Engine {
     /// startup calibration happens while the pad lies still after launch, not on first focus.
     pub fn idle(&mut self, now: f64, s: &State) {
         let dt = self.dt(now, s.timestamp_us);
+        self.gyro.watch_rest(now, s.gyro, s.accel, &self.profile.gyro);
         self.gyro.update(now, dt, s.gyro, &self.profile.gyro, false);
     }
 
@@ -364,6 +365,7 @@ impl Engine {
         self.buttons.left_stick(tilt > 0.0, &mut self.held, sink);
 
         let gyro_on = self.profile.gyro.off.is_none_or(|b| !self.pressed.contains(&b));
+        self.gyro.watch_rest(now, s.gyro, s.accel, &self.profile.gyro);
         let (gx, gy) = self.gyro.update(now, dt, s.gyro, &self.profile.gyro, gyro_on);
         let fx = self.flick.update(dt, s.right, &self.profile.flick);
         let turn = (TURN_SPEED * dt).min(self.turn_left);

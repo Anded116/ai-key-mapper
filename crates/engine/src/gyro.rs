@@ -9,6 +9,20 @@ pub const TRIM_S: f64 = 0.3;
 const OUTLIER_DPS: f32 = 1.5;
 const MIN_SAMPLES: usize = 50;
 const MAX_SAMPLES: usize = 50_000;
+/// Rest calibration: the pad counts as lying still after this long without motion.
+const REST_S: f64 = 1.5;
+/// Still means every gyro axis stays within this of its mean (deg/s): hands shake more than this,
+/// a table does not.
+const REST_SPREAD_DPS: f32 = 0.6;
+/// ... and gravity does not move by more than this (g): a slow, smooth turn tilts it, rest does not.
+const REST_SPREAD_G: f32 = 0.012;
+/// A bias this far off is not drift but a pad moving steadily; leave it alone.
+const REST_MAX_BIAS_DPS: f32 = 6.0;
+/// Rest results closer than this to the current bias are not worth a log line.
+const REST_REPORT_DPS: f32 = 0.08;
+
+/// A sample kept for rest calibration: time, rates, acceleration.
+type RestSample = (f64, [f32; 3], [f32; 3]);
 
 struct Accum {
     started: f64,
@@ -21,6 +35,8 @@ pub struct CalibrationResult {
     /// New bias, or `None` when there were too few still samples and the old bias stays.
     pub bias: Option<[f32; 3]>,
     pub samples: usize,
+    /// Found by itself while the pad lay still, not by a button or at startup.
+    pub auto: bool,
 }
 
 #[derive(Default)]
@@ -30,6 +46,9 @@ pub struct Gyro {
     started: bool,
     startup_until: Option<f64>,
     last: Option<CalibrationResult>,
+    /// Recent samples for rest calibration: time, rates, acceleration.
+    rest: Vec<RestSample>,
+    rest_checked: f64,
 }
 
 impl Gyro {
@@ -73,7 +92,44 @@ impl Gyro {
         if ok {
             self.bias = bias;
         }
-        self.last = Some(CalibrationResult { bias: ok.then_some(bias), samples: used });
+        self.last = Some(CalibrationResult { bias: ok.then_some(bias), samples: used, auto: false });
+    }
+
+    /// Rest calibration: a pad lying still for `REST_S` gets its bias from those samples, without a
+    /// button — drift goes away whenever the pad is put down.
+    pub fn watch_rest(&mut self, now: f64, rates: [f32; 3], accel: [f32; 3], cfg: &GyroCfg) {
+        if !cfg.auto_calibrate || self.accum.is_some() {
+            self.rest.clear();
+            return;
+        }
+        self.rest.push((now, rates, accel));
+        self.rest.retain(|(t, _, _)| now - *t <= REST_S);
+        if now - self.rest_checked < 0.25 || self.rest.len() < MIN_SAMPLES || now - self.rest[0].0 < REST_S * 0.95 {
+            return;
+        }
+        self.rest_checked = now;
+        let n = self.rest.len() as f32;
+        let spread = |pick: &dyn Fn(&RestSample) -> f32| {
+            let (lo, hi) = self.rest.iter().map(pick).fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            hi - lo
+        };
+        for axis in 0..3 {
+            if spread(&|s| s.1[axis]) > REST_SPREAD_DPS * 2.0 || spread(&|s| s.2[axis]) > REST_SPREAD_G * 2.0 {
+                return;
+            }
+        }
+        let mut bias = [0.0f32; 3];
+        for (axis, b) in bias.iter_mut().enumerate() {
+            *b = self.rest.iter().map(|s| s.1[axis]).sum::<f32>() / n;
+        }
+        if bias.iter().any(|b| b.abs() > REST_MAX_BIAS_DPS) {
+            return;
+        }
+        let change = (0..3).map(|a| (bias[a] - self.bias[a]).abs()).fold(0.0, f32::max);
+        self.bias = bias;
+        if change > REST_REPORT_DPS {
+            self.last = Some(CalibrationResult { bias: Some(bias), samples: self.rest.len(), auto: true });
+        }
     }
 
     /// Camera turn in degrees for this sample: (right, down). `rates` are deg/s (pitch, yaw, roll).
@@ -132,9 +188,48 @@ mod tests {
             off: None,
             calibrate: None,
             startup_calibration: 0.5,
+            auto_calibrate: true,
             invert_x: false,
             invert_y: false,
         }
+    }
+
+    /// Rates and acceleration of a pad on a table: bias plus sensor noise.
+    fn table(i: usize, bias: [f32; 3]) -> ([f32; 3], [f32; 3]) {
+        let n = ((i * 7919) % 13) as f32 / 13.0 - 0.5;
+        ([bias[0] + n * 0.3, bias[1] - n * 0.2, bias[2] + n * 0.1], [0.0 + n * 0.004, -1.0, 0.01])
+    }
+
+    #[test]
+    fn a_pad_put_down_calibrates_itself() {
+        let c = cfg();
+        let mut g = Gyro::default();
+        for i in 0..1000 {
+            let (r, a) = table(i, [0.7, -0.5, 0.2]);
+            g.watch_rest(i as f64 * 0.002, r, a, &c);
+        }
+        let b = g.bias();
+        assert!((b[0] - 0.7).abs() < 0.05 && (b[1] + 0.5).abs() < 0.05, "{b:?}");
+        assert!(g.take_result().is_some_and(|r| r.auto));
+    }
+
+    #[test]
+    fn hands_and_slow_turns_are_not_rest() {
+        let c = cfg();
+        let mut g = Gyro::default();
+        // In hands: tremor of a few deg/s.
+        for i in 0..1500 {
+            let shake = ((i as f32) * 0.3).sin() * 2.5;
+            g.watch_rest(i as f64 * 0.002, [0.7 + shake, -0.5, 0.2], [0.0, -1.0, 0.0], &c);
+        }
+        assert_eq!(g.bias(), [0.0; 3], "tremor is motion");
+        // A slow, perfectly smooth turn: steady 3 deg/s, gravity swings with it.
+        let mut g = Gyro::default();
+        for i in 0..1500 {
+            let angle = (i as f32 * 0.002 * 3.0).to_radians();
+            g.watch_rest(i as f64 * 0.002, [3.0, 0.0, 0.0], [0.0, -angle.cos(), angle.sin()], &c);
+        }
+        assert_eq!(g.bias(), [0.0; 3], "a steady turn tilts gravity");
     }
 
     #[test]

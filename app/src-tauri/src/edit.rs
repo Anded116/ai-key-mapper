@@ -96,16 +96,25 @@ pub fn set(path: &Path, button: &str, layer: Option<&str>, edit: &Edit, note: &s
 /// `calibration.real_world`: значение меняется, комментарий у строки остаётся.
 pub fn set_real_world(path: &Path, value: f32) -> Result<(), String> {
     let rounded = (f64::from(value) * 10_000.0).round() / 10_000.0;
+    set_setting(path, "calibration", "real_world", Value::from(rounded))
+}
+
+/// `[controller] hide`: прятать геймпад от игры через HidHide.
+pub fn set_hide(path: &Path, hide: bool) -> Result<(), String> {
+    set_setting(path, "controller", "hide", Value::from(hide))
+}
+
+/// Настройка в разделе профиля; комментарий у прежней строки остаётся.
+fn set_setting(path: &Path, section: &str, key: &str, mut value: Value) -> Result<(), String> {
     write(path, |doc| {
-        if !doc.contains_table("calibration") {
-            doc.insert("calibration", toml_edit::table());
+        if !doc.contains_table(section) {
+            doc.insert(section, toml_edit::table());
         }
-        let table = doc["calibration"].as_table_mut().expect("calibration is a table");
-        let mut v = Value::from(rounded);
-        if let Some(old) = table.get("real_world").and_then(|i| i.as_value()) {
-            *v.decor_mut() = old.decor().clone();
+        let table = doc[section].as_table_mut().expect("section is a table");
+        if let Some(old) = table.get(key).and_then(|i| i.as_value()) {
+            *value.decor_mut() = old.decor().clone();
         }
-        table.insert("real_world", Item::Value(v));
+        table.insert(key, Item::Value(value));
     })
 }
 

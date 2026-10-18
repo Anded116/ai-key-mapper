@@ -663,21 +663,26 @@ impl Importer {
             }
         }
 
-        // Touchpad: a 2×1 grid is exactly the engine's left / right half click.
+        // Touchpad: a 2×1 grid is the engine's left / right half click, a 2×2 grid its four quarters
+        // (JSM numbers cells row by row from the top left).
         let mode = self.word("TOUCHPAD_MODE");
         let grid = self.take("GRID_SIZE");
-        let halves = matches!(&mode, Some((m, _)) if m == "GRID_AND_STICK")
-            && grid.as_ref().is_some_and(|(g, _)| g.split_whitespace().collect::<Vec<_>>() == ["2", "1"]);
-        if !halves {
+        let is_grid = matches!(&mode, Some((m, _)) if m == "GRID_AND_STICK");
+        let size: Vec<String> = grid.as_ref().map_or(Vec::new(), |(g, _)| g.split_whitespace().map(str::to_string).collect());
+        let cells: &[&'static str] = match (is_grid, size.iter().map(String::as_str).collect::<Vec<_>>().as_slice()) {
+            (true, ["2", "1"]) => &["pad_left", "pad_right"],
+            (true, ["2", "2"]) => &["pad_up_left", "pad_up_right", "pad_down_left", "pad_down_right"],
+            _ => &[],
+        };
+        if cells.is_empty() {
             for (_, src) in mode.iter().chain(grid.iter()) {
-                self.skip(src, "режим тачпада: в движке только клик по левой / правой половине");
+                self.skip(src, "режим тачпада: в движке клик по сетке 2×1 или 2×2");
             }
         }
         for (n, (keys, src)) in std::mem::take(&mut self.grid_clicks) {
-            match (halves, n) {
-                (true, 1) => self.put_pad("pad_left", keys, src),
-                (true, 2) => self.put_pad("pad_right", keys, src),
-                _ => self.skip(&src, "клик по ячейке тачпада вне сетки 2×1"),
+            match cells.get((n as usize).wrapping_sub(1)) {
+                Some(&cell) => self.put_pad(cell, keys, src),
+                None => self.skip(&src, "клик по ячейке тачпада вне сетки 2×1 / 2×2"),
             }
         }
 

@@ -46,6 +46,7 @@ fn main() {
             state::calibrate,
             state::test_turn,
             state::set_real_world,
+            state::set_hide,
             state::engine_log
         ])
         .build(tauri::generate_context!())

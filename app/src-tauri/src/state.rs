@@ -150,6 +150,9 @@ pub struct Bindings {
     /// Отсчётов мыши на градус при чувствительности 1 и чувствительность в игре.
     pub real_world: f32,
     pub in_game_sens: f32,
+    /// `[controller] hide` и режим стика по профилю: прятать имеет смысл только при WASD.
+    pub hide: bool,
+    pub wasd: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -244,6 +247,8 @@ impl Bindings {
                 .collect(),
             move_keys: p.movement.keys.iter().map(|k| k.name().to_string()).collect(),
             real_world: p.calibration.real_world,
+            hide: p.hide_controller,
+            wasd: p.movement.mode == engine::profile::MoveMode::Wasd,
             in_game_sens: p.calibration.in_game_sens,
         })
     }
@@ -358,6 +363,12 @@ pub fn set_real_world(file: String, value: f32) -> Result<(), String> {
         return Err(format!("real_world должен быть больше нуля, а не {value}"));
     }
     edit::set_real_world(&profile_file(&file)?, value)
+}
+
+/// Прятать ли геймпад от игры этого профиля (HidHide); подхватит следующий запуск игры.
+#[tauri::command]
+pub fn set_hide(file: String, hide: bool) -> Result<(), String> {
+    edit::set_hide(&profile_file(&file)?, hide)
 }
 
 /// Журнал движка с начала работы, старые строки первыми.

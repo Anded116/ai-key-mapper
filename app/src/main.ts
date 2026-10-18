@@ -76,6 +76,13 @@ async function show(file: string | null) {
     btn.classList.toggle('active', btn.dataset.lang === (viewed?.prompts ?? 'ru'))
   }
   $('prompts').hidden = !viewed
+  $<HTMLInputElement>('hide').checked = Boolean(viewed?.hide)
+  $('game-settings').hidden = !viewed
+  $('hide-hint').textContent = !viewed
+    ? ''
+    : viewed.hide && !viewed.wasd
+      ? 'Сейчас стик читает игра (гибрид) — прятать начнёт, когда переключишь стик на WASD (R2 + L3).'
+      : 'Если подсказки в игре мигают между клавиатурой и геймпадом. Сработает со следующего запуска игры.'
   drawProfiles()
   relabel()
   inspect()
@@ -96,6 +103,17 @@ $('prompts').addEventListener('click', async (ev) => {
   if (!btn || !viewed || btn.dataset.lang === viewed.prompts) return
   await invoke('set_prompts', { file: viewed.file, lang: btn.dataset.lang })
   await show(viewed.file)
+})
+$('hide').addEventListener('change', async () => {
+  if (!viewed) return
+  const want = $<HTMLInputElement>('hide').checked
+  try {
+    await invoke('set_hide', { file: viewed.file, hide: want })
+    await show(viewed.file)
+  } catch (err) {
+    $('hide-hint').textContent = String(err)
+    $<HTMLInputElement>('hide').checked = !want
+  }
 })
 $('layer-switch').addEventListener('click', (ev) => {
   const btn = (ev.target as HTMLElement).closest<HTMLElement>('button')

@@ -144,6 +144,8 @@ pub struct GyroCfg {
     pub calibrate: Option<Btn>,
     /// Seconds of calibration right after start; keep the pad still.
     pub startup_calibration: f32,
+    /// Recalibrate by itself whenever the pad lies still for a moment.
+    pub auto_calibrate: bool,
     pub invert_x: bool,
     pub invert_y: bool,
 }
@@ -318,6 +320,7 @@ struct RawGyro {
     off: String,
     calibrate: String,
     startup_calibration: f32,
+    auto_calibrate: bool,
     invert_x: bool,
     invert_y: bool,
 }
@@ -333,6 +336,7 @@ impl Default for RawGyro {
             off: "touch".into(),
             calibrate: "ps".into(),
             startup_calibration: 1.0,
+            auto_calibrate: true,
             invert_x: false,
             invert_y: false,
         }
@@ -743,6 +747,7 @@ fn compile(mut raw: Raw, fallback_name: &str) -> Result<Profile, ProfileError> {
             off: opt_btn(&g.off, "gyro.off")?,
             calibrate: opt_btn(&g.calibrate, "gyro.calibrate")?,
             startup_calibration: g.startup_calibration.max(0.0),
+            auto_calibrate: g.auto_calibrate,
             invert_x: g.invert_x,
             invert_y: g.invert_y,
         },

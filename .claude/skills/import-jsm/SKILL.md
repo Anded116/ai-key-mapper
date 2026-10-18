@@ -28,15 +28,15 @@ target/release/aikm-import "<путь к пресету.txt>" -o profiles/<иг�
 - калибровка, гироскоп (в том числе из подключённого `_3Dmouse.txt`), `RIGHT_STICK_MODE = FLICK`,
   `GYRO_OFF`, мёртвые зоны, `HOLD_PRESS_TIME`, `DBL_PRESS_WINDOW`, `TRIGGER_THRESHOLD`;
 - левый стик на четырёх клавишах → `mode = "wasd"`, `LRING` + `LEFT_RING_MODE` → `walk`/`sprint`;
-- `TOUCHPAD_MODE = GRID_AND_STICK` с `GRID_SIZE = 2 1`: `T1,CAPTURE` / `T2,CAPTURE` →
-  `pad_left` / `pad_right`;
+- `TOUCHPAD_MODE = GRID_AND_STICK` с `GRID_SIZE = 2 1` или `2 2`: `T1,CAPTURE` … → `pad_left` /
+  `pad_right` или четверти `pad_up_left`, `pad_up_right`, `pad_down_left`, `pad_down_right` (JSM считает ячейки построчно с верхней левой);
 - файлы состояния оружия (`ZR,N = 6\ "Game/N.txt"\`) → пары `press` + `next`; если на всех четырёх
   лицевых кнопках цифры — сворачиваются в `[weapons]`;
 - кнопка, которая подгружает файл с другими `LUP/LDOWN/LLEFT/LRIGHT` → `ToggleMovement`.
 
 Что не переносится, утилита пишет в конец профиля блоком `# Не перенесено:` с причиной:
 модификаторы `! ^ \ /` и турбо `+`, одновременные нажатия `L3+R3`, диагонали `UP*RIGHT`,
-`LIGHT_BAR`, `VIRTUAL_CONTROLLER` и кнопки `X_*`, сетка тачпада кроме 2×1, `GYRO_ON`, правый стик
+`LIGHT_BAR`, `VIRTUAL_CONTROLLER` и кнопки `X_*`, сетка тачпада кроме 2×1 и 2×2, `GYRO_ON`, правый стик
 AIM, `STICK_SENS` и прочие настройки стика-прицела, левый стик частично на клавишах.
 
 ## 2. Довести руками

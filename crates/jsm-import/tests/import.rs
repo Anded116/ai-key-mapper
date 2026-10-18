@@ -90,14 +90,18 @@ fn ultrakill_four_slots_and_chords() {
 }
 
 #[test]
-fn elden_ring_unsupported_touch_grid_and_gyro_on() {
+fn elden_ring_touch_grid_2x2_and_unsupported_gyro_on() {
     let im = fixture("EldenRing_FlickStick_GyroOnTouch.txt");
     let p = &im.profile;
     assert_eq!(p.gyro.off, None);
     assert!(!p.buttons.contains_key(&Btn::PadLeft));
-    for line in ["GRID_SIZE = 2 2", "T3,CAPTURE = 3", "GYRO_ON = TOUCH"] {
-        assert!(skipped(&im, line), "{line}");
-    }
+    // JSM numbers grid cells row by row: T1 T2 on top, T3 T4 below.
+    assert_eq!(press(p, Btn::PadUpLeft), keys(&["1"]));
+    assert_eq!(press(p, Btn::PadUpRight), keys(&["2"]));
+    assert_eq!(press(p, Btn::PadDownLeft), keys(&["3"]));
+    assert_eq!(press(p, Btn::PadDownRight), keys(&["4"]));
+    assert!(!skipped(&im, "GRID_SIZE = 2 2"));
+    assert!(skipped(&im, "GYRO_ON = TOUCH"));
     assert!(im.toml.contains("# Не перенесено:"));
 }
 
