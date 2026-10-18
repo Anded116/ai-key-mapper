@@ -8,6 +8,7 @@ pub mod keys;
 pub mod output;
 pub mod profile;
 pub mod runner;
+pub mod steam;
 
 pub use engine::{Engine, Snapshot};
 pub use keys::Output;

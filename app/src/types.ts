@@ -15,6 +15,6 @@ export interface PadState {
 
 /** Строка ленты чата из события `agent`. */
 export interface AgentEvent {
-  kind: 'text' | 'tool' | 'result' | 'error' | 'done'
+  kind: 'user' | 'system' | 'text' | 'tool' | 'result' | 'error' | 'done'
   text: string
 }

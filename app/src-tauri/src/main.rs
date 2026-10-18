@@ -7,7 +7,7 @@ use tauri::{Manager, RunEvent};
 
 fn main() {
     tauri::Builder::default()
-        .manage(agent::Agent::default())
+        .manage(agent::Agent::load())
         .manage(state::Mapper::default())
         .setup(|app| {
             app.state::<state::Mapper>().start(app.handle().clone());
@@ -16,6 +16,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             agent::send_chat,
             agent::reset_chat,
+            agent::chat_history,
             state::set_paused,
             state::calibrate,
             state::engine_log

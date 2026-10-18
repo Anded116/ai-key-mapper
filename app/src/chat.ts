@@ -28,9 +28,18 @@ export function mountChat() {
     if (!busy && thinking) { thinking.remove(); thinking = null }
   }
 
+  const show = (e: AgentEvent) => add(e.kind, e.kind === 'tool' ? `→ ${e.text}` : e.text)
+
   listen<AgentEvent>('agent', ({ payload: e }) => {
     if (e.kind === 'done') return setBusy(false)
-    add(e.kind, e.kind === 'tool' ? `→ ${e.text}` : e.text)
+    show(e)
+  })
+
+  // Прошлый диалог переживает перезапуск окна: лента собирается из транскрипта его сессии.
+  invoke<AgentEvent[]>('chat_history').then((history) => {
+    if (!history.length) return
+    add('system', 'Продолжение прошлого диалога. «Новый диалог» начнёт чистую сессию, прежняя останется в архиве.')
+    history.forEach(show)
   })
 
   form.addEventListener('submit', async (ev) => {

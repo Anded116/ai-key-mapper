@@ -124,7 +124,11 @@ pub fn send_chat(text: String, app: AppHandle, agent: State<'_, Agent>) -> Resul
             let Ok(event) = serde_json::from_str::<Value>(&line) else { continue };
             if let Some(id) = event.get("session_id").and_then(Value::as_str) {
                 let state = app.state::<Agent>();
-                *state.session.lock().unwrap() = Some(id.to_string());
+                let mut session = state.session.lock().unwrap();
+                if session.as_deref() != Some(id) {
+                    save_session(Some(id));
+                    *session = Some(id.to_string());
+                }
             }
             for (kind, text) in describe(&event) {
                 emit(kind, text);
@@ -143,10 +147,80 @@ pub fn send_chat(text: String, app: AppHandle, agent: State<'_, Agent>) -> Resul
     Ok(())
 }
 
-/// Начать новый диалог: следующее сообщение запустит свежую сессию.
+
+/// `%LOCALAPPDATA%\aikeymapper`: там же журнал HidHide.
+pub fn data_dir() -> PathBuf {
+    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    base.join("aikeymapper")
+}
+
+/// Идентификатор текущей сессии агента: окно продолжает её после перезапуска.
+fn session_file() -> PathBuf {
+    data_dir().join("chat-session.txt")
+}
+
+fn save_session(id: Option<&str>) {
+    let path = session_file();
+    let _ = match id {
+        Some(id) => std::fs::create_dir_all(data_dir()).and_then(|_| std::fs::write(&path, id)),
+        None => std::fs::remove_file(&path),
+    };
+}
+
+/// Транскрипт сессии, который Claude Code пишет сам: `~/.claude/projects/<папка>/<id>.jsonl`.
+fn transcript(id: &str) -> Option<PathBuf> {
+    let config = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".claude")))?;
+    let name = format!("{id}.jsonl");
+    std::fs::read_dir(config.join("projects")).ok()?.filter_map(|e| e.ok()).map(|e| e.path().join(&name)).find(|p| p.exists())
+}
+
+impl Agent {
+    pub fn load() -> Self {
+        let session = std::fs::read_to_string(session_file()).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        Self { session: Mutex::new(session), busy: Mutex::new(false) }
+    }
+}
+
+/// Лента текущего диалога, восстановленная из транскрипта сессии.
+#[tauri::command]
+pub fn chat_history(agent: State<'_, Agent>) -> Vec<AgentEvent> {
+    let Some(id) = agent.session.lock().unwrap().clone() else { return Vec::new() };
+    let Some(text) = transcript(&id).and_then(|p| std::fs::read_to_string(p).ok()) else { return Vec::new() };
+    let mut feed = Vec::new();
+    for event in text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()) {
+        if event.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        match event.get("type").and_then(Value::as_str) {
+            // Строка — то, что написал пользователь; массивы — результаты инструментов и тексты скиллов.
+            Some("user") if event.get("isMeta").is_none() => {
+                if let Some(t) = event.pointer("/message/content").and_then(Value::as_str) {
+                    feed.push(AgentEvent { kind: "user", text: t.trim().to_string() });
+                }
+            }
+            Some("assistant") => {
+                feed.extend(describe(&event).into_iter().map(|(kind, text)| AgentEvent { kind, text }));
+            }
+            _ => {}
+        }
+    }
+    feed
+}
+
+/// Начать новый диалог: следующее сообщение запустит свежую сессию. Прежняя не теряется: её
+/// идентификатор дописывается в `chat-archive.txt`, транскрипт остаётся у Claude Code.
 #[tauri::command]
 pub fn reset_chat(agent: State<'_, Agent>) {
-    *agent.session.lock().unwrap() = None;
+    if let Some(old) = agent.session.lock().unwrap().take() {
+        use std::io::Write;
+        let archive = std::fs::OpenOptions::new().create(true).append(true).open(data_dir().join("chat-archive.txt"));
+        if let Ok(mut f) = archive {
+            let _ = writeln!(f, "{old}");
+        }
+    }
+    save_session(None);
 }
 
 /// Читаемые строки из одного события stream-json.

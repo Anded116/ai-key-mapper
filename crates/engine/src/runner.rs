@@ -1,7 +1,7 @@
 //! The mapping loop shared by the `aikm` CLI and the app window: opens the controller, picks the
 //! profile, runs the engine while its game is in focus, hides the pad when the profile asks.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command as Process, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -13,6 +13,7 @@ use hidapi::HidApi;
 
 use crate::output::{RecordSink, Sink, WinSink};
 use crate::profile::MoveMode;
+use crate::steam;
 use crate::{Engine, Output, Profile, Snapshot};
 
 pub struct Config {
@@ -103,43 +104,50 @@ fn folder_mtime(dir: &Path) -> Option<SystemTime> {
         .max()
 }
 
-/// Executable name of the window in focus, lower case (`testrange.exe`).
-pub fn foreground_exe() -> Option<String> {
+/// Full path of a process's executable.
+pub fn process_path(pid: u32) -> Option<PathBuf> {
     use windows::core::PWSTR;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
-    // SAFETY: plain Win32 queries on a handle we own; the buffer outlives the call.
+    // SAFETY: a process handle we own; the buffer outlives the call.
     unsafe {
-        let hwnd = GetForegroundWindow();
-        if hwnd.is_invalid() {
-            return None;
-        }
-        let mut pid = 0u32;
-        GetWindowThreadProcessId(hwnd, Some(&mut pid));
-        if pid == 0 {
-            return None;
-        }
         let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
         let mut buf = [0u16; 1024];
         let mut len = buf.len() as u32;
         let res = QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len);
         let _ = CloseHandle(process);
         res.ok()?;
-        let path = String::from_utf16_lossy(&buf[..len as usize]);
-        Path::new(&path).file_name().map(|n| n.to_string_lossy().to_lowercase())
+        Some(PathBuf::from(String::from_utf16_lossy(&buf[..len as usize])))
     }
 }
 
-/// Executables of all running processes, lower case.
-pub fn running_exes() -> HashSet<String> {
+/// Executable name of the window in focus, lower case (`testrange.exe`).
+pub fn foreground_exe() -> Option<String> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    let mut pid = 0u32;
+    // SAFETY: plain Win32 queries about the foreground window.
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_invalid() {
+            return None;
+        }
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    }
+    if pid == 0 {
+        return None;
+    }
+    process_path(pid)?.file_name().map(|n| n.to_string_lossy().to_lowercase())
+}
+
+/// Running processes: executable name in lower case → process id.
+pub fn running_exes() -> HashMap<String, u32> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32NextW, Process32FirstW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
     };
-    let mut exes = HashSet::new();
+    let mut exes = HashMap::new();
     // SAFETY: a snapshot handle we own, walked with a correctly sized entry.
     unsafe {
         let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return exes };
@@ -147,7 +155,7 @@ pub fn running_exes() -> HashSet<String> {
         let mut ok = Process32FirstW(snap, &mut entry).is_ok();
         while ok {
             let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
-            exes.insert(String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase());
+            exes.insert(String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase(), entry.th32ProcessID);
             ok = Process32NextW(snap, &mut entry).is_ok();
         }
         let _ = CloseHandle(snap);
@@ -471,7 +479,7 @@ impl Loop {
         let running = running_exes();
         let game = index
             .iter()
-            .filter(|g| running.contains(&g.exe))
+            .filter(|g| running.contains_key(&g.exe))
             .filter_map(|g| pick_profile(index, &g.exe))
             .find(|g| g.hides)
             .map(|g| (g.path.clone(), g.exe.clone()));
@@ -479,6 +487,10 @@ impl Loop {
         if path != self.hide_game {
             if let Some((_, exe)) = &game {
                 self.log(&format!("запущена {exe}"));
+                let warning = running.get(exe).and_then(|&pid| process_path(pid)).and_then(|p| steam::input_warning(&p));
+                if let Some(w) = warning {
+                    self.log(&w);
+                }
             }
             self.hide_game = path;
         }
@@ -624,7 +636,7 @@ mod tests {
     fn running_exes_include_this_test() {
         let me = std::env::current_exe().unwrap();
         let me = me.file_name().unwrap().to_string_lossy().to_lowercase();
-        assert!(running_exes().contains(&me));
+        assert!(running_exes().contains_key(&me));
     }
 
     #[test]

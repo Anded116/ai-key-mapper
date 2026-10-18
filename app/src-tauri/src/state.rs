@@ -1,14 +1,18 @@
 //! Снимок состояния для UI: событие `state` по контракту из docs/architecture.md, плюс строки
 //! журнала движка событием `log`. Кадры приходят из `engine::runner` ~60 раз в секунду.
 
-use std::path::PathBuf;
 use std::collections::VecDeque;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use dualsense::Bus;
 use engine::runner::{self, Command, Config, Frame, Handle};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+
+use crate::agent;
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct State {
@@ -125,6 +129,21 @@ pub fn repo_root() -> PathBuf {
     manifest.parent().and_then(|p| p.parent()).map(PathBuf::from).unwrap_or(manifest)
 }
 
+/// Журнал движка на диске, `%LOCALAPPDATA%\aikeymapper\engine.log`: по нему потом видно, когда
+/// что случилось (например, успело ли скрытие геймпада до запуска игры). Больше мегабайта —
+/// уходит в `engine.old.log`.
+fn open_log_file() -> Option<File> {
+    let dir = agent::data_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("engine.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 1 << 20) {
+        let _ = std::fs::rename(&path, dir.join("engine.old.log"));
+    }
+    let mut f = OpenOptions::new().create(true).append(true).open(path).ok()?;
+    let _ = writeln!(f, "\n{} — окно запущено", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+    Some(f)
+}
+
 /// Сколько последних строк журнала помнить для окна, открывшегося позже движка.
 const LOG_KEEP: usize = 20;
 
@@ -148,7 +167,11 @@ impl Mapper {
             let _ = frames.emit("state", State::from(f));
         });
         let log = self.log.clone();
+        let mut file = open_log_file();
         let on_log = Box::new(move |msg: &str| {
+            if let Some(f) = &mut file {
+                let _ = writeln!(f, "{} {msg}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"));
+            }
             let mut log = log.lock().unwrap();
             if log.len() == LOG_KEEP {
                 log.pop_front();
