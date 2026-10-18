@@ -18,11 +18,10 @@ mode = "wasd"
 r3 = "MouseMiddle"              # третье действие
 triangle = "Q"                  # повернуть постройку / след. категория сумки
 create = "Tab"                  # инвентарь; удержание — рюкзак
-options = { tap = "Esc", hold = "M", hold_ms = 500 }   # пауза / GPS
 dpad_up = "B"                   # книга выживания
 dpad_down = "G"                 # выбросить
 dpad_left = "L"                 # зажигалка
-dpad_right = "M"                # GPS
+dpad_right = ""                 # свободно: карты на клавише в игре нет, GPS — предмет в инвентаре
 pad_left = "C"                  # разобрать
 pad_right = "X"                 # отмена постройки / режим книги
 mic = "MouseBack"               # рация: нажми и говори

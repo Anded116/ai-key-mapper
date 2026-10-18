@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agent;
+mod edit;
 mod state;
 
 use tauri::{Manager, RunEvent};
@@ -18,6 +19,8 @@ fn main() {
             agent::reset_chat,
             agent::chat_history,
             state::bindings,
+            state::set_binding,
+            state::reset_binding,
             state::set_paused,
             state::calibrate,
             state::engine_log

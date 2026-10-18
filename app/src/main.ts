@@ -1,154 +1,116 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { mountPad } from './pad'
-import { mountLabels } from './labels'
+import { mountSheet } from './sheet'
+import { mountEditor } from './editor'
 import { mountChat } from './chat'
+import { keyFace } from './keys'
 import type { Bindings, PadState } from './types'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
-const drawPad = mountPad($('pad'))
-const labels = mountLabels($('pad').querySelector('svg')!)
-listen<Bindings | null>('bindings', ({ payload }) => labels.setBindings(payload))
-  .then(() => invoke<Bindings | null>('bindings'))
-  .then((b) => labels.setBindings(b))
+let bindings: Bindings | null = null
+const pad = mountPad($('pad'))
+const editor = mountEditor($('editor'), () => bindings)
+const sheet = mountSheet($('sheet'), pad, (id, layer) => editor.open(id, layer))
 mountChat()
 
-/** Крестовина оружия из layout-standard.md: □ 1/2, ✕ 3/4, ○ 5/6, △ 7/8. */
-const WEAPONS = [
-  { face: 'triangle', glyph: '△', slots: [7, 8] },
-  { face: 'square', glyph: '□', slots: [1, 2] },
-  { face: 'circle', glyph: '○', slots: [5, 6] },
-  { face: 'cross', glyph: '✕', slots: [3, 4] },
-]
-const GLYPHS: Record<string, string> = {
-  triangle: '<polygon points="0,-6 5.5,4 -5.5,4" />',
-  circle: '<circle r="5.5" />',
-  cross: '<path d="M -5 -5 L 5 5 M 5 -5 L -5 5" />',
-  square: '<rect x="-5" y="-5" width="10" height="10" />',
+const showBindings = (b: Bindings | null) => {
+  bindings = b
+  $('sheet').classList.toggle('has-profile', Boolean(b))
+  sheet.setBindings(b)
 }
-const weaponsEl = $('weapons')
-weaponsEl.innerHTML = WEAPONS.map((w) => `<div class="weapon weapon-${w.face}" data-face="${w.face}">
-  <svg class="weapon-glyph" viewBox="-8 -8 16 16">${GLYPHS[w.face]}</svg>
-  ${w.slots.map((n) => `<span class="slot" data-slot="${n}">${n}</span>`).join('')}</div>`).join('')
-const slotEls = [...weaponsEl.querySelectorAll<HTMLElement>('[data-slot]')]
-const faceEls = [...weaponsEl.querySelectorAll<HTMLElement>('[data-face]')]
+listen<Bindings | null>('bindings', ({ payload }) => showBindings(payload))
+  .then(() => invoke<Bindings | null>('bindings'))
+  .then(showBindings)
 
-const GYRO_AXES = ['pitch', 'yaw', 'roll']
-const gyroEl = $('gyro')
-gyroEl.innerHTML = GYRO_AXES.map((a) => `<div class="gyro-row"><span>${a}</span>
-  <div class="bar"><i id="gyro-${a}"></i></div><b id="gyro-${a}-v">0</b></div>`).join('')
+// Чат — шторка справа; открыта ли она, окно помнит.
+const CHAT_KEY = 'aikm.chat-open'
+const setChat = (open: boolean) => {
+  $('app').classList.toggle('chat-open', open)
+  $('chat-toggle').classList.toggle('active', open)
+  try { localStorage.setItem(CHAT_KEY, open ? '1' : '0') } catch { /* окно без хранилища */ }
+}
+let chatOpen = true
+try { chatOpen = localStorage.getItem(CHAT_KEY) !== '0' } catch { /* окно без хранилища */ }
+setChat(chatOpen)
+$('chat-toggle').addEventListener('click', () => setChat(!$('app').classList.contains('chat-open')))
 
-const BUS = { usb: 'USB', bluetooth: 'Bluetooth' } as Record<string, string>
-const MOVEMENT = { wasd: 'стик → WASD', hybrid: 'стик в игре' } as Record<string, string>
-let lastKey = ''
+const BUS: Record<string, string> = { usb: 'USB', bluetooth: 'Bluetooth' }
+const MOVEMENT: Record<string, string> = { wasd: 'Стик → WASD', hybrid: 'Стик читает игра' }
 let paused = false
+const cache: Record<string, string> = {}
 
-function drawEngine(s: PadState) {
+/** Записать в элемент, только если поменялось: 60 кадров в секунду не должны трогать DOM зря. */
+const put = (id: string, value: string, html = false) => {
+  if (cache[id] === value) return
+  cache[id] = value
+  if (html) $(id).innerHTML = value
+  else $(id).textContent = value
+}
+
+function drawTop(s: PadState) {
   const e = s.engine
   paused = e.paused
-  const [text, tone] = !s.pad
+  const [state, tone] = !s.pad
     ? ['геймпад не найден', 'off']
     : !s.profile
       ? ['жду игру с профилем', 'off']
       : e.paused
         ? ['пауза', 'warn']
         : e.focused
-          ? ['работаю', 'on']
+          ? ['работает', 'ok']
           : ['игра не в фокусе', 'off']
-  const state = $('engine-state')
-  state.textContent = text
-  state.className = `engine-state ${tone}`
+  put('profile', s.profile ?? 'Нет профиля')
+  put('engine-state', state)
+  $('status-dot').dataset.tone = tone
 
-  const tags = [
-    e.movement ? MOVEMENT[e.movement] ?? e.movement : '',
-    e.hidden ? 'скрыт от игр' : '',
-    e.calibrating ? 'калибровка гироскопа' : '',
-  ].filter(Boolean)
-  const tagsKey = tags.join('|')
-  const tagsEl = $('engine-tags')
-  if (tagsEl.dataset.key !== tagsKey) {
-    tagsEl.dataset.key = tagsKey
-    tagsEl.innerHTML = tags.map((t) => `<span class="tag">${t}</span>`).join('')
-  }
+  const tags = [e.movement ? MOVEMENT[e.movement] ?? e.movement : '', e.hidden ? 'Геймпад скрыт от игры' : '', e.calibrating ? 'Калибровка гироскопа' : '']
+  put('tags', tags.filter(Boolean).map((t) => `<span class="tag-pill">${t}</span>`).join(''), true)
 
-  const pause = $('pause')
-  pause.textContent = e.paused ? 'Продолжить' : 'Пауза'
-  pause.classList.toggle('active', e.paused)
-  const cal = $('calibrate')
-  cal.textContent = e.calibrating ? 'Завершить' : 'Калибровка'
-  cal.classList.toggle('active', e.calibrating)
-  cal.toggleAttribute('disabled', !s.pad)
-}
-
-function drawStatus(s: PadState) {
   const p = s.pad
-  $('pad-info').textContent = p
-    ? [p.model, BUS[p.bus] ?? p.bus, p.battery === null ? '' : `батарея ${Math.round(p.battery * 100)}%`]
-      .filter(Boolean)
-      .join(' · ')
-    : 'геймпад не подключён'
-  $('profile').textContent = s.profile ?? '—'
-  drawEngine(s)
-
-  const layer = $('layer')
-  layer.textContent = s.layer ? `слой ${s.layer.toUpperCase()}` : 'базовый'
-  layer.classList.toggle('active', Boolean(s.layer))
-  weaponsEl.classList.toggle('active', s.layer === 'r2')
-
-  for (const el of slotEls) el.classList.toggle('current', Number(el.dataset.slot) === s.weapons.current)
-  for (const el of faceEls) el.classList.toggle('next', el.dataset.face === s.weapons.next_double)
-  const next = WEAPONS.find((w) => w.face === s.weapons.next_double)
-  $('weapon-hint').textContent = next ? `ещё раз ${next.glyph} → ${next.slots[1]}` : ' '
-
-  // Список выходов меняется редко: перерисовываем, только когда он другой.
-  const key = s.outputs.join(' ')
-  if (key !== lastKey) {
-    lastKey = key
-    $('outputs').innerHTML = s.outputs.length
-      ? s.outputs.map((o) => `<span class="key">${o}</span>`).join('')
-      : '<span class="empty">ничего</span>'
+  put('device-name', p ? `${p.model} · ${BUS[p.bus] ?? p.bus}` : 'геймпад не найден')
+  const battery = $('battery')
+  battery.hidden = !p || p.battery === null
+  if (p && p.battery !== null) {
+    const pct = Math.round(p.battery * 100)
+    put('battery-text', p.charging ? `${pct}% · заряжается` : `${pct}%`)
+    $('battery-fill').setAttribute('width', (18 * p.battery).toFixed(1))
+    battery.classList.toggle('charging', p.charging)
+    battery.classList.toggle('low', !p.charging && pct <= 15)
   }
+  $('pause').classList.toggle('active', e.paused)
+  $('pause').title = e.paused ? 'Продолжить' : 'Пауза — то же, что PS + Create'
+  $('calibrate').classList.toggle('active', e.calibrating)
+  $('calibrate').toggleAttribute('disabled', !p)
 
-  s.gyro_dps.forEach((v, i) => {
-    const a = GYRO_AXES[i]
-    const k = Math.max(-1, Math.min(1, v / 180))
-    const bar = $(`gyro-${a}`)
-    bar.style.left = k < 0 ? `${50 + k * 50}%` : '50%'
-    bar.style.width = `${Math.abs(k) * 50}%`
-    $(`gyro-${a}-v`).textContent = v.toFixed(0)
-  })
+  put('outputs', s.outputs.map((o) => `<span class="mini-cap">${keyFace(o).main}</span>`).join('') || '<span class="faint">ничего</span>', true)
 }
 
 $('pause').addEventListener('click', () => invoke('set_paused', { paused: !paused }))
 $('calibrate').addEventListener('click', () => invoke('calibrate'))
 
-// Журнал движка: последние строки, новые сверху. Строки до открытия окна берём из истории.
-const LOG_LINES = 6
-const logEl = $('log')
-function showLog(lines: string[]) {
-  logEl.innerHTML = ''
-  for (const line of lines.slice(-LOG_LINES).reverse()) {
-    const li = document.createElement('li')
-    li.textContent = line
-    li.title = line
-    logEl.append(li)
-  }
-}
+// Журнал движка: в подвале последняя строка, по клику — последние десять.
 const logLines: string[] = []
+const showLog = () => {
+  const last = logLines[logLines.length - 1] ?? ''
+  $('logline').textContent = last
+  $('log').innerHTML = logLines.slice(-10).reverse().map((l) => `<li>${l.replace(/</g, '&lt;')}</li>`).join('')
+}
+$('logline').addEventListener('click', () => { $('log').hidden = !$('log').hidden })
 listen<string>('log', ({ payload }) => {
   logLines.push(payload)
-  showLog(logLines)
+  showLog()
 }).then(() => invoke<string[]>('engine_log')).then((history) => {
   logLines.splice(0, logLines.length, ...history)
-  showLog(logLines)
+  showLog()
 })
 
 // Событий ~60 в секунду: рисуем только последнее за кадр.
 let pending: PadState | null = null
 listen<PadState>('state', (e) => {
   if (!pending) requestAnimationFrame(() => {
-    if (pending) { drawPad(pending); labels.draw(pending); drawStatus(pending) }
+    if (pending) { pad.draw(pending); sheet.draw(pending); drawTop(pending) }
     pending = null
   })
   pending = e.payload

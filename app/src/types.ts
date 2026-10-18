@@ -1,6 +1,6 @@
 /** Событие `state` движка, см. «Контракт движок → UI» в docs/architecture.md. */
 export interface PadState {
-  pad: { model: string; bus: string; battery: number | null } | null
+  pad: { model: string; bus: string; battery: number | null; charging: boolean } | null
   buttons: string[]
   sticks: { left: [number, number]; right: [number, number] }
   triggers: { l2: number; r2: number }
@@ -22,6 +22,7 @@ export interface AgentEvent {
 /** Событие `bindings`: что кнопки делают в игре, для меток на схеме. */
 export interface Bindings {
   profile: string
+  file: string
   buttons: Record<string, BindingEntry>
   layers: Record<string, Record<string, BindingEntry>>
   move_keys: string[]
@@ -30,4 +31,5 @@ export interface Bindings {
 export interface BindingEntry {
   parts: { how: 'press' | 'tap' | 'hold' | 'double' | 'next' | 'latch'; keys: string[] }[]
   note: string | null
+  own: boolean
 }

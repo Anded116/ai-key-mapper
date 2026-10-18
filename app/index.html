@@ -7,60 +7,63 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <main class="app">
-      <section class="board">
-        <header class="topbar">
-          <div class="brand">ai-key-mapper</div>
-          <div class="pad-info" id="pad-info">геймпад не подключён</div>
-          <div class="profile">профиль <b id="profile">—</b></div>
-        </header>
-        <div class="stage">
-          <div class="pad-wrap" id="pad"></div>
-          <aside class="status">
-            <div class="card">
-              <h3>Движок</h3>
-              <div class="engine-state" id="engine-state">запуск…</div>
-              <div class="engine-tags" id="engine-tags"></div>
-              <div class="engine-actions">
-                <button id="pause" class="ghost" title="То же, что PS + Create на геймпаде">Пауза</button>
-                <button id="calibrate" class="ghost" title="Как тап по PS: положи геймпад и нажми ещё раз, чтобы закончить">Калибровка</button>
-              </div>
-              <ul class="log" id="log"></ul>
-            </div>
-            <div class="card">
-              <h3>Слой</h3>
-              <div class="layer" id="layer">базовый</div>
-            </div>
-            <div class="card">
-              <h3>Оружие · R2 +</h3>
-              <div class="weapons" id="weapons"></div>
-              <div class="hint" id="weapon-hint">&nbsp;</div>
-            </div>
-            <div class="card">
-              <h3>Уходит в игру</h3>
-              <div class="outputs" id="outputs"></div>
-            </div>
-            <div class="card">
-              <h3>Гироскоп, °/с</h3>
-              <div class="gyro" id="gyro"></div>
-            </div>
-          </aside>
+    <div class="app" id="app">
+      <header class="topbar">
+        <div class="game">
+          <span class="status-dot" id="status-dot"></span>
+          <div>
+            <div class="game-name" id="profile">Нет профиля</div>
+            <div class="game-state" id="engine-state">запуск…</div>
+          </div>
         </div>
-      </section>
-      <section class="chat">
+        <div class="tags" id="tags"></div>
+        <div class="device" id="device">
+          <svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8h10a4 4 0 0 1 4 4.4l-.5 4a2.6 2.6 0 0 1-4.6 1.3L14.5 16h-5l-1.4 1.7a2.6 2.6 0 0 1-4.6-1.3l-.5-4A4 4 0 0 1 7 8Z" /><path d="M8 11v3M6.5 12.5h3M15.5 12h.01M17.5 13.5h.01" /></svg>
+          <span id="device-name">геймпад не найден</span>
+          <span class="battery" id="battery" hidden>
+            <svg viewBox="0 0 26 14" aria-hidden="true"><rect class="battery-shell" x="0.5" y="0.5" width="22" height="13" rx="3" /><rect class="battery-tip" x="23.5" y="4.5" width="2" height="5" rx="1" /><rect class="battery-fill" id="battery-fill" x="2.5" y="2.5" width="0" height="9" rx="1.5" /><path class="battery-bolt" d="M12.5 2.5 8.5 7.6h3.4l-1.4 3.9 4.1-5.2h-3.4z" /></svg>
+            <span id="battery-text"></span>
+          </span>
+        </div>
+        <div class="actions">
+          <button class="icon-btn" id="pause" title="Пауза — то же, что PS + Create">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-pause" d="M9 6v12M15 6v12" /><path class="i-play" d="M8 6l10 6-10 6z" /></svg>
+          </button>
+          <button class="icon-btn" id="calibrate" title="Калибровка гироскопа: положи геймпад, нажми; ещё раз — закончить">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
+          </button>
+          <button class="icon-btn" id="chat-toggle" title="Агент: собрать или поправить профиль словами">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="sheet" id="sheet">
+        <div class="padbox" id="pad"></div>
+        <div class="sheet-empty" id="sheet-empty">Открой игру с профилем — здесь появится её раскладка.<br />Профиль ещё не собран? Попроси агента в чате.</div>
+      </main>
+
+      <footer class="footer">
+        <div class="outputs"><span class="footer-label">В игру</span><span id="outputs"></span></div>
+        <button class="logline" id="logline" title="Журнал движка"></button>
+        <ul class="log" id="log" hidden></ul>
+      </footer>
+
+      <aside class="chat" id="chat">
         <header class="chat-head">
           <span>Агент</span>
-          <button id="chat-reset" class="ghost" title="Следующее сообщение начнёт новую сессию">Новый диалог</button>
+          <button id="chat-reset" class="ghost" title="Следующее сообщение начнёт новую сессию; прежняя останется в архиве">Новый диалог</button>
         </header>
         <div class="feed" id="feed">
-          <div class="msg system">Опиши игру — агент соберёт под неё раскладку.</div>
+          <div class="msg system">Опиши игру — агент соберёт под неё раскладку. Хоткей можно поменять и сам: кликни по строке на схеме.</div>
         </div>
         <form class="composer" id="composer">
-          <textarea id="input" rows="3" placeholder="Например: собери профиль для TestRange"></textarea>
-          <button type="submit" id="send">Отправить</button>
+          <textarea id="input" rows="3" placeholder="Например: сделай профиль для Sons of the Forest"></textarea>
+          <button type="submit" id="send" class="primary">Отправить</button>
         </form>
-      </section>
-    </main>
+      </aside>
+    </div>
+    <div class="overlay" id="editor" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

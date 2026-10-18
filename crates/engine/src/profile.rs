@@ -664,7 +664,8 @@ fn compile(mut raw: Raw, fallback_name: &str) -> Result<Profile, ProfileError> {
                 next: (pairs == 2).then(|| Keys::One(w.keys[i * 2 + 1].clone())),
                 ..RawBindingTable::default()
             };
-            layer.insert(name.to_string(), RawBinding::Table(table));
+            // An explicit `[layer.*]` binding beats the weapon list.
+            layer.entry(name.to_string()).or_insert(RawBinding::Table(table));
         }
     }
 
@@ -780,6 +781,17 @@ mod tests {
 
     fn key(n: &str) -> Output {
         Output::parse(n).unwrap()
+    }
+
+    #[test]
+    fn explicit_layer_binding_beats_weapons() {
+        let p = Profile::parse(
+            "[weapons]\nslots = 8\nkeys = [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\"]\n[layer.r2]\nsquare = \"K\"",
+        )
+        .unwrap();
+        let r2 = &p.layers[0];
+        assert_eq!(r2.bindings[&Btn::Square].press, vec![Output::parse("K").unwrap()]);
+        assert_eq!(r2.bindings[&Btn::Cross].next, vec![Output::parse("4").unwrap()]);
     }
 
     #[test]

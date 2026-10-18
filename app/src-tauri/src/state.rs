@@ -14,7 +14,7 @@ use engine::{Output, Profile};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::agent;
+use crate::{agent, edit};
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct State {
@@ -44,6 +44,7 @@ pub struct Pad {
     pub bus: String,
     /// 0..1; `None`, пока геймпад не сообщил заряд.
     pub battery: Option<f32>,
+    pub charging: bool,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -98,7 +99,7 @@ impl From<&Frame> for State {
                 Bus::Usb => "usb",
                 Bus::Bluetooth => "bluetooth",
             };
-            s.pad = Some(Pad { model: info.model.name().into(), bus: bus.into(), battery: pad.battery });
+            s.pad = Some(Pad { model: info.model.name().into(), bus: bus.into(), battery: pad.battery, charging: pad.charging });
             s.buttons = pad.buttons.names().map(String::from).collect();
             s.sticks = Sticks { left: pad.left, right: pad.right };
             s.triggers = Triggers { l2: pad.l2, r2: pad.r2 };
@@ -130,6 +131,8 @@ impl From<&Frame> for State {
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct Bindings {
     pub profile: String,
+    /// Файл профиля игры, куда пишутся правки.
+    pub file: String,
     /// По id кнопки на схеме: `l1`, `cross`, `up`, `pad_left`…
     pub buttons: BTreeMap<String, Entry>,
     /// Слои: `r2` → кнопки слоя.
@@ -143,6 +146,8 @@ pub struct Entry {
     pub parts: Vec<Part>,
     /// Комментарий к привязке в профиле.
     pub note: Option<String>,
+    /// Задана в файле игры, а не унаследована из базового профиля.
+    pub own: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -158,7 +163,7 @@ fn pad_id(b: Btn) -> String {
     b.name().trim_start_matches("dpad_").to_string()
 }
 
-fn entry(b: &Binding, note: Option<&String>) -> Option<Entry> {
+fn entry(b: &Binding, note: Option<&String>, own: bool) -> Option<Entry> {
     let names = |v: &[Output]| v.iter().map(|o| o.name().to_string()).collect::<Vec<_>>();
     let parts: Vec<Part> = [
         ("press", &b.press),
@@ -172,23 +177,50 @@ fn entry(b: &Binding, note: Option<&String>) -> Option<Entry> {
     .filter(|(_, v)| !v.is_empty())
     .map(|(how, v)| Part { how, keys: names(v) })
     .collect();
-    (!parts.is_empty()).then(|| Entry { parts, note: note.cloned() })
+    (!parts.is_empty()).then(|| Entry { parts, note: note.cloned(), own })
+}
+
+/// Привязки, заданные в самом файле игры: `buttons.l1`, `layer.r2.square`. `[weapons]` в файле
+/// игры задаёт лицевые кнопки своего слоя.
+fn own_keys(path: &Path) -> std::collections::HashSet<String> {
+    let mut own = std::collections::HashSet::new();
+    let Some(t) = std::fs::read_to_string(path).ok().and_then(|s| s.parse::<toml_edit::DocumentMut>().ok()) else { return own };
+    if let Some(b) = t.get("buttons").and_then(|i| i.as_table_like()) {
+        own.extend(b.iter().map(|(k, _)| format!("buttons.{k}")));
+    }
+    if let Some(layers) = t.get("layer").and_then(|i| i.as_table_like()) {
+        for (name, layer) in layers.iter() {
+            if let Some(l) = layer.as_table_like() {
+                own.extend(l.iter().map(|(k, _)| format!("layer.{name}.{k}")));
+            }
+        }
+    }
+    if let Some(w) = t.get("weapons") {
+        let layer = w.get("layer").and_then(|l| l.as_str()).unwrap_or("r2");
+        own.extend(["square", "cross", "circle", "triangle"].map(|b| format!("layer.{layer}.{b}")));
+    }
+    own
 }
 
 impl Bindings {
     pub fn load(path: &Path) -> Option<Self> {
         let p = Profile::load(path).ok()?;
         let notes = binding_notes(path);
+        let own = own_keys(path);
         let table = |bindings: &std::collections::HashMap<Btn, Binding>, section: &str| {
             bindings
                 .iter()
                 .filter_map(|(b, binding)| {
-                    entry(binding, notes.get(&format!("{section}.{}", b.name()))).map(|e| (pad_id(*b), e))
+                    {
+                    let key = format!("{section}.{}", b.name());
+                    entry(binding, notes.get(&key), own.contains(&key)).map(|e| (pad_id(*b), e))
+                }
                 })
                 .collect::<BTreeMap<_, _>>()
         };
         Some(Self {
             profile: p.game.clone(),
+            file: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
             buttons: table(&p.buttons, "buttons"),
             layers: p
                 .layers
@@ -230,6 +262,8 @@ pub struct Mapper {
     handle: Mutex<Option<Handle>>,
     log: Arc<Mutex<VecDeque<String>>>,
     bindings: Arc<Mutex<Option<Bindings>>>,
+    /// Файл активного профиля.
+    profile: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl Mapper {
@@ -242,11 +276,13 @@ impl Mapper {
         };
         let frames = app.clone();
         let bindings = self.bindings.clone();
+        let profile = self.profile.clone();
         let mut loaded: Option<(PathBuf, u32)> = None;
         let on_frame = Box::new(move |f: &Frame| {
             let current = f.profile_path.clone().map(|p| (p, f.profile_rev));
             if current != loaded {
                 loaded = current;
+                *profile.lock().unwrap() = loaded.as_ref().map(|(p, _)| p.clone());
                 let b = loaded.as_ref().and_then(|(p, _)| Bindings::load(p));
                 *bindings.lock().unwrap() = b.clone();
                 let _ = frames.emit("bindings", b);
@@ -302,4 +338,26 @@ pub fn engine_log(mapper: tauri::State<'_, Mapper>) -> Vec<String> {
 #[tauri::command]
 pub fn bindings(mapper: tauri::State<'_, Mapper>) -> Option<Bindings> {
     mapper.bindings.lock().unwrap().clone()
+}
+
+fn active_profile(mapper: &Mapper) -> Result<PathBuf, String> {
+    mapper.profile.lock().unwrap().clone().ok_or_else(|| "профиль не загружен: открой игру с профилем".to_string())
+}
+
+/// Записать привязку кнопки в профиль игры; движок перечитает его сам.
+#[tauri::command]
+pub fn set_binding(
+    button: String,
+    layer: Option<String>,
+    edit: edit::Edit,
+    note: String,
+    mapper: tauri::State<'_, Mapper>,
+) -> Result<(), String> {
+    edit::set(&active_profile(&mapper)?, &button, layer.as_deref(), &edit, &note)
+}
+
+/// Вернуть кнопке привязку из базового профиля.
+#[tauri::command]
+pub fn reset_binding(button: String, layer: Option<String>, mapper: tauri::State<'_, Mapper>) -> Result<(), String> {
+    edit::reset(&active_profile(&mapper)?, &button, layer.as_deref())
 }
