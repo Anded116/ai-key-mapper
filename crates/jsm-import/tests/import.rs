@@ -123,7 +123,9 @@ fn testrange_reference_preset_matches_the_engine_profile() {
     for b in [Btn::Square, Btn::Cross, Btn::Circle, Btn::Triangle, Btn::Create, Btn::Options] {
         assert_eq!(layer(p, Btn::R2, b), layer(&reference, Btn::R2, b), "R2 + {b:?}");
     }
-    for b in [Btn::L1, Btn::R1, Btn::L2, Btn::L3, Btn::R3, Btn::Cross, Btn::Square, Btn::Up, Btn::Down, Btn::PadLeft, Btn::Mic] {
+    for b in [Btn::L1, Btn::R1, Btn::L2, Btn::R3, Btn::Cross, Btn::Square, Btn::Up, Btn::Down, Btn::PadLeft, Btn::Mic] {
         assert_eq!(p.buttons.get(&b), reference.buttons.get(&b), "{b:?}");
     }
+    // JSM has no latch: its L3 sprint is held, the engine standard sprints on one click.
+    assert_eq!(p.buttons[&Btn::L3].press, reference.buttons[&Btn::L3].latch);
 }
