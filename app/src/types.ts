@@ -18,3 +18,16 @@ export interface AgentEvent {
   kind: 'user' | 'system' | 'text' | 'tool' | 'result' | 'error' | 'done'
   text: string
 }
+
+/** Событие `bindings`: что кнопки делают в игре, для меток на схеме. */
+export interface Bindings {
+  profile: string
+  buttons: Record<string, BindingEntry>
+  layers: Record<string, Record<string, BindingEntry>>
+  move_keys: string[]
+}
+
+export interface BindingEntry {
+  parts: { how: 'press' | 'tap' | 'hold' | 'double' | 'next' | 'latch'; keys: string[] }[]
+  note: string | null
+}

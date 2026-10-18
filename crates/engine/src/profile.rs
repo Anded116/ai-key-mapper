@@ -472,6 +472,50 @@ impl Profile {
     }
 }
 
+/// What each binding does in the game, from its line comment: `"buttons.l1"` → `"прыжок"`,
+/// `"layer.r2.create"` → `"быстрое сохранение"`. The base comes first, the game's own comment wins;
+/// a binding the game redefines without a comment loses the base one.
+pub fn binding_notes(path: &Path) -> HashMap<String, String> {
+    let mut notes = HashMap::new();
+    collect_notes(path, &mut notes, 0);
+    notes
+}
+
+fn collect_notes(path: &Path, notes: &mut HashMap<String, String>, depth: usize) {
+    let Ok(text) = std::fs::read_to_string(path) else { return };
+    if depth <= 8 {
+        if let Some(Value::String(base)) = toml::from_str::<Table>(&text).ok().and_then(|mut t| t.remove("extends")) {
+            collect_notes(&sibling(path, &base), notes, depth + 1);
+        }
+    }
+    let mut section = String::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.split(']').next()) {
+            section = name.trim().to_string();
+            continue;
+        }
+        let Some((key, rest)) = line.split_once('=') else { continue };
+        let key = key.trim();
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let full = format!("{section}.{key}");
+        // A `#` inside a quoted key name is not a comment.
+        let mut quoted = false;
+        let comment = rest.char_indices().find_map(|(i, c)| {
+            if c == '"' {
+                quoted = !quoted;
+            }
+            (c == '#' && !quoted).then(|| rest[i + 1..].trim().to_string())
+        });
+        match comment.filter(|c| !c.is_empty()) {
+            Some(c) => notes.insert(full, c),
+            None => notes.remove(&full),
+        };
+    }
+}
+
 fn load_merged(path: &Path, depth: usize) -> Result<Table, ProfileError> {
     if depth > 8 {
         return err("`extends` chain is too long (loop?)");
@@ -736,6 +780,16 @@ mod tests {
 
     fn key(n: &str) -> Output {
         Output::parse(n).unwrap()
+    }
+
+    #[test]
+    fn notes_come_from_comments_through_extends() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../profiles");
+        let notes = binding_notes(&dir.join("testrange.toml"));
+        assert_eq!(notes["buttons.l1"], "прыжок", "from _base");
+        assert_eq!(notes["buttons.dpad_up"], "фонарик", "from the game");
+        assert_eq!(notes["layer.r2.create"], "быстрое сохранение");
+        assert!(!notes.contains_key("calibration.in_game_sens"));
     }
 
     #[test]

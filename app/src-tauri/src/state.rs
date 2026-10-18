@@ -1,14 +1,16 @@
 //! Снимок состояния для UI: событие `state` по контракту из docs/architecture.md, плюс строки
 //! журнала движка событием `log`. Кадры приходят из `engine::runner` ~60 раз в секунду.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use dualsense::Bus;
+use engine::profile::{binding_notes, Binding, Btn};
 use engine::runner::{self, Command, Config, Frame, Handle};
+use engine::{Output, Profile};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -123,6 +125,81 @@ impl From<&Frame> for State {
     }
 }
 
+/// Что кнопки делают в игре — для подписей на схеме. Событие `bindings`, при каждой смене или
+/// перезагрузке профиля.
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct Bindings {
+    pub profile: String,
+    /// По id кнопки на схеме: `l1`, `cross`, `up`, `pad_left`…
+    pub buttons: BTreeMap<String, Entry>,
+    /// Слои: `r2` → кнопки слоя.
+    pub layers: BTreeMap<String, BTreeMap<String, Entry>>,
+    /// Клавиши левого стика в режиме WASD: вперёд, влево, назад, вправо.
+    pub move_keys: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Entry {
+    pub parts: Vec<Part>,
+    /// Комментарий к привязке в профиле.
+    pub note: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Part {
+    /// `press` | `tap` | `hold` | `double` | `next` | `latch`
+    pub how: &'static str,
+    /// Имена клавиш движка: `Q`, `LShift`, `MouseLeft`…
+    pub keys: Vec<String>,
+}
+
+/// Id кнопки на схеме: имя из профиля без `dpad_`.
+fn pad_id(b: Btn) -> String {
+    b.name().trim_start_matches("dpad_").to_string()
+}
+
+fn entry(b: &Binding, note: Option<&String>) -> Option<Entry> {
+    let names = |v: &[Output]| v.iter().map(|o| o.name().to_string()).collect::<Vec<_>>();
+    let parts: Vec<Part> = [
+        ("press", &b.press),
+        ("tap", &b.tap),
+        ("hold", &b.hold),
+        ("double", &b.double),
+        ("next", &b.next),
+        ("latch", &b.latch),
+    ]
+    .into_iter()
+    .filter(|(_, v)| !v.is_empty())
+    .map(|(how, v)| Part { how, keys: names(v) })
+    .collect();
+    (!parts.is_empty()).then(|| Entry { parts, note: note.cloned() })
+}
+
+impl Bindings {
+    pub fn load(path: &Path) -> Option<Self> {
+        let p = Profile::load(path).ok()?;
+        let notes = binding_notes(path);
+        let table = |bindings: &std::collections::HashMap<Btn, Binding>, section: &str| {
+            bindings
+                .iter()
+                .filter_map(|(b, binding)| {
+                    entry(binding, notes.get(&format!("{section}.{}", b.name()))).map(|e| (pad_id(*b), e))
+                })
+                .collect::<BTreeMap<_, _>>()
+        };
+        Some(Self {
+            profile: p.game.clone(),
+            buttons: table(&p.buttons, "buttons"),
+            layers: p
+                .layers
+                .iter()
+                .map(|l| (l.button.name().to_string(), table(&l.bindings, &format!("layer.{}", l.button.name()))))
+                .collect(),
+            move_keys: p.movement.keys.iter().map(|k| k.name().to_string()).collect(),
+        })
+    }
+}
+
 /// Корень репозитория: app/src-tauri → ../..
 pub fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -152,6 +229,7 @@ const LOG_KEEP: usize = 20;
 pub struct Mapper {
     handle: Mutex<Option<Handle>>,
     log: Arc<Mutex<VecDeque<String>>>,
+    bindings: Arc<Mutex<Option<Bindings>>>,
 }
 
 impl Mapper {
@@ -163,7 +241,16 @@ impl Mapper {
             hidhide_tool: Some(root.join("target").join("release").join("aikm-hidhide.exe")),
         };
         let frames = app.clone();
+        let bindings = self.bindings.clone();
+        let mut loaded: Option<(PathBuf, u32)> = None;
         let on_frame = Box::new(move |f: &Frame| {
+            let current = f.profile_path.clone().map(|p| (p, f.profile_rev));
+            if current != loaded {
+                loaded = current;
+                let b = loaded.as_ref().and_then(|(p, _)| Bindings::load(p));
+                *bindings.lock().unwrap() = b.clone();
+                let _ = frames.emit("bindings", b);
+            }
             let _ = frames.emit("state", State::from(f));
         });
         let log = self.log.clone();
@@ -209,4 +296,10 @@ pub fn calibrate(mapper: tauri::State<'_, Mapper>) {
 #[tauri::command]
 pub fn engine_log(mapper: tauri::State<'_, Mapper>) -> Vec<String> {
     mapper.log.lock().unwrap().iter().cloned().collect()
+}
+
+/// Привязки активного профиля: окно спрашивает их при открытии, дальше ловит событие `bindings`.
+#[tauri::command]
+pub fn bindings(mapper: tauri::State<'_, Mapper>) -> Option<Bindings> {
+    mapper.bindings.lock().unwrap().clone()
 }

@@ -17,6 +17,7 @@ fn main() {
             agent::send_chat,
             agent::reset_chat,
             agent::chat_history,
+            state::bindings,
             state::set_paused,
             state::calibrate,
             state::engine_log

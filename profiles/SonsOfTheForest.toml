@@ -1,0 +1,38 @@
+extends = "_base"
+game = "Sons of the Forest"
+exe = "SonsOfTheForest.exe"
+
+# No known value for this game: deliberately slow start, tune with a 360° flick.
+[calibration]
+real_world = 10.0
+in_game_sens = 1.0
+
+# The game reads a controller natively and switches prompts to the last device used.
+[controller]
+hide = true
+
+[movement]
+mode = "wasd"
+
+[buttons]
+r3 = "MouseMiddle"              # третье действие
+triangle = "Q"                  # повернуть постройку / след. категория сумки
+create = "Tab"                  # инвентарь; удержание — рюкзак
+options = { tap = "Esc", hold = "M", hold_ms = 500 }   # пауза / GPS
+dpad_up = "B"                   # книга выживания
+dpad_down = "G"                 # выбросить
+dpad_left = "L"                 # зажигалка
+dpad_right = "M"                # GPS
+pad_left = "C"                  # разобрать
+pad_right = "X"                 # отмена постройки / режим книги
+mic = "MouseBack"               # рация: нажми и говори
+
+[weapons]                       # hotkeys 1–8, assigned in the inventory
+slots = 8
+keys = ["1", "2", "3", "4", "5", "6", "7", "8"]
+
+[layer.r2]
+create = ""
+options = ""
+dpad_up = "T"                   # рация
+dpad_down = "Z"                 # сон

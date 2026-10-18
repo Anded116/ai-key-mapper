@@ -17,8 +17,8 @@ mode = "wasd"
 walk = "LAlt"
 
 [buttons]
-dpad_up = "F"                   # flashlight
-dpad_down = "MouseMiddle"       # ping
-pad_left = "F1"                 # help
-pad_right = "F2"                # debug HUD
-mic = "F8"                      # reset counters
+dpad_up = "F"                   # фонарик
+dpad_down = "MouseMiddle"       # метка
+pad_left = "F1"                 # справка
+pad_right = "F2"                # отладочный HUD
+mic = "F8"                      # сброс счётчиков

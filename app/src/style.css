@@ -193,3 +193,15 @@ button {
 button:disabled { opacity: 0.45; cursor: default; }
 button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 4px 10px; font-weight: 500; }
 button.ghost:hover:not(:disabled) { color: var(--text); }
+
+/* ---------- метки клавиш на схеме ---------- */
+
+.pad .chip rect { fill: #0f1319; stroke: #3a4352; stroke-width: 1.2; }
+.pad .chip text { text-anchor: middle; fill: var(--text); font: 600 16px 'Segoe UI', system-ui, sans-serif; }
+.pad .chip .k { font-size: 17px; font-weight: 700; }
+.pad .chip .k-sub { font-size: 11px; fill: var(--muted); font-weight: 500; }
+.pad .chip .k-word { font-size: 13px; font-weight: 600; }
+.pad .chip .how, .pad .chip .sep { font-size: 11px; fill: var(--muted); font-weight: 500; }
+.pad .chip.in-layer rect { stroke: var(--layer); fill: #23111c; }
+.pad .chip.on rect { fill: var(--accent); stroke: #9cc4ff; }
+.pad .chip.on text, .pad .chip.on .k-sub, .pad .chip.on .how, .pad .chip.on .sep { fill: #0b1020; }

@@ -30,19 +30,19 @@ double_ms = 250
 tap_ms = 40
 
 [buttons]
-l1 = "Space"                    # jump
-r1 = "MouseLeft"                # fire
-l2 = "MouseRight"               # aim
-l3 = { latch = "LShift" }       # sprint: one click, lasts until the stick is back in the centre
-r3 = "V"                        # melee
-cross = "E"                     # use
-square = "R"                    # reload
-triangle = "G"                  # grenade / ability
-circle = "LCtrl"                # crouch
-options = "Esc"                 # pause
-create = "Tab"                  # stats while held
-dpad_left = "I"                 # inventory
-dpad_right = "M"                # map
+l1 = "Space"                    # прыжок
+r1 = "MouseLeft"                # огонь
+l2 = "MouseRight"               # прицел
+l3 = { latch = "LShift" }       # бег: один клик, до остановки стика
+r3 = "V"                        # удар
+cross = "E"                     # использовать
+square = "R"                    # перезарядка
+triangle = "G"                  # граната / способность
+circle = "LCtrl"                # присед
+options = "Esc"                 # пауза
+create = "Tab"                  # статистика, пока держишь
+dpad_left = "I"                 # инвентарь
+dpad_right = "M"                # карта
 
 [weapons]                       # R2 + □ ✕ ○ △; with 8 slots the second press gives the even slot
 layer = "r2"
@@ -50,6 +50,6 @@ slots = 8
 keys = ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 [layer.r2]
-create = "F5"                   # quick save
-options = "F9"                  # quick load
-l3 = "ToggleMovement"           # left stick: hybrid <-> WASD
+create = "F5"                   # быстрое сохранение
+options = "F9"                  # быстрая загрузка
+l3 = "ToggleMovement"           # левый стик: гибрид ↔ WASD

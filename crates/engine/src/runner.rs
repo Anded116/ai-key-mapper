@@ -45,6 +45,9 @@ pub struct Frame {
     pub state: Option<State>,
     pub snapshot: Option<Snapshot>,
     pub profile: Option<String>,
+    /// File of the active profile; `profile_rev` grows each time it is (re)loaded.
+    pub profile_path: Option<PathBuf>,
+    pub profile_rev: u32,
     pub focused: bool,
     pub paused: bool,
     pub hidden: bool,
@@ -303,6 +306,7 @@ struct Loop {
     waiting_pad: bool,
     /// Running game whose profile hides the pad from it (auto mode).
     hide_game: Option<PathBuf>,
+    profile_rev: u32,
 }
 
 impl Loop {
@@ -350,6 +354,7 @@ impl Loop {
             lightbar: None,
             waiting_pad: false,
             hide_game: None,
+            profile_rev: 0,
         }
     }
 
@@ -450,6 +455,7 @@ impl Loop {
                         None => self.engine = Some(Engine::new(profile)),
                     }
                     self.active = Some(p);
+                    self.profile_rev += 1;
                 }
                 Err(e) => self.log(&format!("профиль не загружен: {e}")),
             }
@@ -595,6 +601,7 @@ impl Loop {
                 if let Some(e) = &mut self.engine {
                     e.set_profile(profile, &mut self.out);
                 }
+                self.profile_rev += 1;
                 self.log("профиль перечитан");
             }
             Err(err) => self.log(&format!("профиль не перечитан: {err}")),
@@ -619,6 +626,8 @@ impl Loop {
             state: self.last_state,
             snapshot: self.engine.as_ref().map(|e| e.snapshot()),
             profile: self.engine.as_ref().map(|e| e.profile.game.clone()),
+            profile_path: self.engine.as_ref().and(self.active.clone()),
+            profile_rev: self.profile_rev,
             focused: self.focused,
             paused: self.paused,
             hidden: self.hider.is_some(),

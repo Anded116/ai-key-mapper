@@ -1,12 +1,17 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { mountPad } from './pad'
+import { mountLabels } from './labels'
 import { mountChat } from './chat'
-import type { PadState } from './types'
+import type { Bindings, PadState } from './types'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
 const drawPad = mountPad($('pad'))
+const labels = mountLabels($('pad').querySelector('svg')!)
+listen<Bindings | null>('bindings', ({ payload }) => labels.setBindings(payload))
+  .then(() => invoke<Bindings | null>('bindings'))
+  .then((b) => labels.setBindings(b))
 mountChat()
 
 /** Крестовина оружия из layout-standard.md: □ 1/2, ✕ 3/4, ○ 5/6, △ 7/8. */
@@ -143,7 +148,7 @@ listen<string>('log', ({ payload }) => {
 let pending: PadState | null = null
 listen<PadState>('state', (e) => {
   if (!pending) requestAnimationFrame(() => {
-    if (pending) { drawPad(pending); drawStatus(pending) }
+    if (pending) { drawPad(pending); labels.draw(pending); drawStatus(pending) }
     pending = null
   })
   pending = e.payload
