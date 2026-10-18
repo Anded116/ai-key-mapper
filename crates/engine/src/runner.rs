@@ -1,6 +1,7 @@
 //! The mapping loop shared by the `aikm` CLI and the app window: opens the controller, picks the
 //! profile, runs the engine while its game is in focus, hides the pad when the profile asks.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command as Process, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -11,6 +12,7 @@ use dualsense::{Bus, Buttons, Model, Pad, State};
 use hidapi::HidApi;
 
 use crate::output::{RecordSink, Sink, WinSink};
+use crate::profile::MoveMode;
 use crate::{Engine, Output, Profile, Snapshot};
 
 pub struct Config {
@@ -131,8 +133,39 @@ pub fn foreground_exe() -> Option<String> {
     }
 }
 
+/// Executables of all running processes, lower case.
+pub fn running_exes() -> HashSet<String> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32NextW, Process32FirstW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    let mut exes = HashSet::new();
+    // SAFETY: a snapshot handle we own, walked with a correctly sized entry.
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return exes };
+        let mut entry = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut ok = Process32FirstW(snap, &mut entry).is_ok();
+        while ok {
+            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+            exes.insert(String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase());
+            ok = Process32NextW(snap, &mut entry).is_ok();
+        }
+        let _ = CloseHandle(snap);
+    }
+    exes
+}
+
+/// A game profile found in the profiles folder.
+pub struct GameProfile {
+    /// Lower case.
+    pub exe: String,
+    pub path: PathBuf,
+    /// Hides the pad from the game from its start: `hide = true` with the stick on WASD.
+    pub hides: bool,
+}
+
 /// Game profiles in a folder by `exe` (files starting with `_` are bases, not games).
-pub fn profile_index(dir: &Path, log: &mut dyn FnMut(&str)) -> Vec<(String, PathBuf)> {
+pub fn profile_index(dir: &Path, log: &mut dyn FnMut(&str)) -> Vec<GameProfile> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut index = Vec::new();
     for e in entries.filter_map(|e| e.ok()) {
@@ -144,8 +177,9 @@ pub fn profile_index(dir: &Path, log: &mut dyn FnMut(&str)) -> Vec<(String, Path
         }
         match Profile::load(&path) {
             Ok(p) => {
-                if let Some(exe) = p.exe {
-                    index.push((exe.to_lowercase(), path));
+                if let Some(exe) = &p.exe {
+                    let hides = p.hide_controller && p.movement.mode == MoveMode::Wasd;
+                    index.push(GameProfile { exe: exe.to_lowercase(), path, hides });
                 }
             }
             Err(e) => log(&format!("профиль пропущен: {e}")),
@@ -156,11 +190,11 @@ pub fn profile_index(dir: &Path, log: &mut dyn FnMut(&str)) -> Vec<(String, Path
 
 /// Profile for an exe. Variants inherit `exe` (testrange-hybrid.toml from testrange.toml), so
 /// when several match, the file named after the exe wins.
-pub fn pick_profile(index: &[(String, PathBuf)], exe: &str) -> Option<PathBuf> {
+pub fn pick_profile<'a>(index: &'a [GameProfile], exe: &str) -> Option<&'a GameProfile> {
     let stem = Path::new(exe).file_stem()?.to_string_lossy().to_lowercase();
-    let matches: Vec<&PathBuf> = index.iter().filter(|(e, _)| e == exe).map(|(_, p)| p).collect();
-    let named = matches.iter().find(|p| p.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase() == stem));
-    named.or(matches.first()).map(|p| (*p).clone())
+    let matches: Vec<&GameProfile> = index.iter().filter(|g| g.exe == exe).collect();
+    let named = matches.iter().find(|g| g.path.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase() == stem));
+    named.or(matches.first()).copied()
 }
 
 /// Real output, or a dry run that only records what would be sent.
@@ -237,7 +271,7 @@ impl Hider {
 /// Where profiles come from: one file, or a folder picked by the window in focus (JSM AutoLoad).
 enum Source {
     File(PathBuf),
-    Auto { dir: PathBuf, index: Vec<(String, PathBuf)>, last_exe: Option<String> },
+    Auto { dir: PathBuf, index: Vec<GameProfile>, last_exe: Option<String> },
 }
 
 struct Loop {
@@ -259,6 +293,8 @@ struct Loop {
     combo_was: bool,
     lightbar: Option<[u8; 3]>,
     waiting_pad: bool,
+    /// Running game whose profile hides the pad from it (auto mode).
+    hide_game: Option<PathBuf>,
 }
 
 impl Loop {
@@ -305,6 +341,7 @@ impl Loop {
             combo_was: false,
             lightbar: None,
             waiting_pad: false,
+            hide_game: None,
         }
     }
 
@@ -338,9 +375,10 @@ impl Loop {
             }
             let now = start.elapsed().as_secs_f64();
 
-            if last_focus.elapsed() >= Duration::from_millis(300) {
+            if last_focus.elapsed() >= Duration::from_millis(250) {
                 last_focus = Instant::now();
                 self.follow_focus();
+                self.follow_games();
             }
             self.follow_hiding();
 
@@ -392,7 +430,7 @@ impl Loop {
             if self.fg_exe != *last_exe {
                 *last_exe = self.fg_exe.clone();
                 let hit = self.fg_exe.as_deref().and_then(|x| pick_profile(index, x));
-                switch_to = hit.filter(|p| self.active.as_ref() != Some(p));
+                switch_to = hit.map(|g| g.path.clone()).filter(|p| self.active.as_ref() != Some(p));
             }
         }
         if let Some(p) = switch_to {
@@ -426,8 +464,35 @@ impl Loop {
         }
     }
 
+    /// A game must not see the pad from its very start: once it has opened the device, hiding
+    /// no longer reaches it. So in auto mode hiding follows the game's process, not its window.
+    fn follow_games(&mut self) {
+        let Source::Auto { index, .. } = &self.source else { return };
+        let running = running_exes();
+        let game = index
+            .iter()
+            .filter(|g| running.contains(&g.exe))
+            .filter_map(|g| pick_profile(index, &g.exe))
+            .find(|g| g.hides)
+            .map(|g| (g.path.clone(), g.exe.clone()));
+        let path = game.as_ref().map(|(p, _)| p.clone());
+        if path != self.hide_game {
+            if let Some((_, exe)) = &game {
+                self.log(&format!("запущена {exe}"));
+            }
+            self.hide_game = path;
+        }
+    }
+
     fn follow_hiding(&mut self) {
-        let wants = !self.config.dry && self.engine.as_ref().is_some_and(|e| e.wants_hidden());
+        let engine_wants = self.engine.as_ref().is_some_and(|e| e.wants_hidden());
+        let wants = !self.config.dry
+            && match (&self.source, &self.hide_game) {
+                (Source::File(_), _) => engine_wants,
+                // R2 + L3 in the running game itself can still give the stick back to it.
+                (Source::Auto { .. }, Some(game)) => self.active.as_ref() != Some(game) || engine_wants,
+                (Source::Auto { .. }, None) => false,
+            };
         if wants && self.hider.is_none() {
             if let Some(tool) = self.config.hidhide_tool.clone() {
                 self.hider = Hider::start(&tool, &mut *self.on_log);
@@ -548,5 +613,27 @@ impl Loop {
             dry_events: std::mem::take(&mut self.out.rec.events),
         };
         (self.on_frame)(&frame);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn running_exes_include_this_test() {
+        let me = std::env::current_exe().unwrap();
+        let me = me.file_name().unwrap().to_string_lossy().to_lowercase();
+        assert!(running_exes().contains(&me));
+    }
+
+    #[test]
+    fn index_marks_hiding_profiles() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../profiles");
+        let index = profile_index(&dir, &mut |_| {});
+        let testrange = pick_profile(&index, "testrange.exe").unwrap();
+        assert!(testrange.path.ends_with("testrange.toml"));
+        assert!(testrange.hides);
+        assert!(index.iter().any(|g| g.path.ends_with("testrange-hybrid.toml") && !g.hides));
     }
 }
