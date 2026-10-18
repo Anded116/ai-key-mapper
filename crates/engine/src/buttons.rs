@@ -6,14 +6,15 @@ use crate::keys::Output;
 use crate::output::{Held, Sink};
 use crate::profile::{Binding, Btn, Profile};
 
-/// A press in progress. The binding is resolved once, at press time: releasing the layer
-/// button first must not change what this button lets go of.
+/// A press in progress. The binding is resolved once, at press time (as JSM does): releasing
+/// the layer button first must not change what this button lets go of.
 struct Active {
     binding: Binding,
     layer: Option<Btn>,
     started: f64,
+    /// Keys that went down on press and go up on release (press, next or double).
+    immediate: Vec<Output>,
     hold_fired: bool,
-    double: bool,
 }
 
 #[derive(Default)]
@@ -23,6 +24,8 @@ pub struct Buttons {
     layers: Vec<Btn>,
     /// First-press time per (button, layer) for `press` + `double`.
     first_press: HashMap<(Btn, Option<Btn>), f64>,
+    /// Per layer: the paired button whose `next` the following press gives.
+    toggle: HashMap<Option<Btn>, Btn>,
     /// Taps waiting out the double-press window: fire time and keys.
     pending_tap: HashMap<(Btn, Option<Btn>), (f64, Vec<Output>)>,
     /// Key-ups of taps, due at the given time.
@@ -32,6 +35,11 @@ pub struct Buttons {
 impl Buttons {
     pub fn active_layer(&self) -> Option<Btn> {
         self.layers.last().copied()
+    }
+
+    /// The paired button whose second weapon the next press in `layer` gives.
+    pub fn next_pair(&self, layer: Option<Btn>) -> Option<Btn> {
+        self.toggle.get(&layer).copied()
     }
 
     fn resolve(&self, b: Btn, p: &Profile) -> (Option<Btn>, Option<Binding>) {
@@ -52,12 +60,19 @@ impl Buttons {
         let (layer, Some(binding)) = self.resolve(b, p) else { return };
         let key = (b, layer);
         let window = p.timing.double_ms as f64 / 1000.0;
-        let mut double = false;
-        if !binding.double.is_empty() {
+        let mut immediate = binding.press.clone();
+        if !binding.next.is_empty() {
+            if self.toggle.get(&layer) == Some(&b) {
+                immediate = binding.next.clone();
+                self.toggle.remove(&layer);
+            } else {
+                self.toggle.insert(layer, b);
+            }
+        } else if !binding.double.is_empty() {
             if !binding.press.is_empty() {
                 match self.first_press.get(&key) {
                     Some(t) if now - t <= window => {
-                        double = true;
+                        immediate = binding.double.clone();
                         self.first_press.remove(&key);
                     }
                     _ => {
@@ -65,27 +80,20 @@ impl Buttons {
                     }
                 }
             } else if self.pending_tap.remove(&key).is_some() {
-                double = true;
+                immediate = binding.double.clone();
             }
         }
-        let first = if double { &binding.double } else { &binding.press };
-        for o in first {
+        for o in &immediate {
             held.down(*o, sink);
         }
-        self.active.insert(b, Active { binding, layer, started: now, hold_fired: false, double });
+        self.active.insert(b, Active { binding, layer, started: now, immediate, hold_fired: false });
     }
 
     pub fn release(&mut self, b: Btn, now: f64, p: &Profile, held: &mut Held, sink: &mut dyn Sink) {
         self.layers.retain(|l| *l != b);
         let Some(a) = self.active.remove(&b) else { return };
-        if a.double {
-            for o in &a.binding.double {
-                held.up(*o, sink);
-            }
-            return;
-        }
-        if !a.binding.press.is_empty() {
-            for o in &a.binding.press {
+        if !a.immediate.is_empty() {
+            for o in &a.immediate {
                 held.up(*o, sink);
             }
             return;
@@ -117,7 +125,7 @@ impl Buttons {
     pub fn tick(&mut self, now: f64, p: &Profile, held: &mut Held, sink: &mut dyn Sink) {
         let hold_after = p.timing.hold_ms as f64 / 1000.0;
         for a in self.active.values_mut() {
-            let wants_hold = a.binding.press.is_empty() && !a.binding.hold.is_empty() && !a.double;
+            let wants_hold = a.immediate.is_empty() && !a.binding.hold.is_empty();
             if wants_hold && !a.hold_fired && now - a.started >= hold_after {
                 a.hold_fired = true;
                 for o in &a.binding.hold {
@@ -205,20 +213,25 @@ mod tests {
     }
 
     #[test]
-    fn weapon_pair_in_layer_has_no_latency() {
+    fn weapon_pairs_toggle_like_jsm_state_files() {
         let mut r = Rig::new("[weapons]\nslots = 8\nkeys = [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\"]");
         r.press(Btn::R2, 0.0);
         r.press(Btn::Square, 0.1);
         assert_eq!(r.events(), ["+1"], "first press acts at once");
         r.release(Btn::Square, 0.15);
-        r.press(Btn::Square, 0.25);
-        r.release(Btn::Square, 0.3);
-        assert_eq!(r.events(), ["-1", "+2", "-2"], "second press within the window gives slot 2");
-        r.press(Btn::Square, 1.0);
-        r.release(Btn::Square, 1.05);
-        assert_eq!(r.events(), ["+1", "-1"], "after the window it starts over: no stale state");
-        r.release(Btn::R2, 1.1);
-        r.press(Btn::Square, 1.2);
+        r.press(Btn::Square, 3.0);
+        r.release(Btn::Square, 3.05);
+        assert_eq!(r.events(), ["-1", "+2", "-2"], "same button again gives the pair's second slot, any time later");
+        r.press(Btn::Square, 4.0);
+        r.release(Btn::Square, 4.05);
+        assert_eq!(r.events(), ["+1", "-1"], "and then the first again");
+        r.press(Btn::Circle, 5.0);
+        r.release(Btn::Circle, 5.05);
+        r.press(Btn::Square, 6.0);
+        r.release(Btn::Square, 6.05);
+        assert_eq!(r.events(), ["+5", "-5", "+1", "-1"], "another button starts its pair over");
+        r.release(Btn::R2, 7.0);
+        r.press(Btn::Square, 7.1);
         assert_eq!(r.events(), Vec::<String>::new(), "without R2 the square has no binding here");
     }
 

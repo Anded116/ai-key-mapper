@@ -3,17 +3,16 @@ use std::collections::BTreeSet;
 use dualsense::{Buttons as PadButtons, State};
 
 use crate::buttons::Buttons;
-use crate::flick::{stick_angle, Flick};
+use crate::flick::{apply_deadzone, Flick};
 use crate::gyro::Gyro;
 use crate::keys::Output;
 use crate::output::{Held, Sink};
 use crate::profile::{Btn, MoveMode, Profile};
 
-const PAD_BITS: [(PadButtons, Btn); 19] = [
+/// Digital buttons. L2/R2 are left out: like JSM they come from the analog position.
+const PAD_BITS: [(PadButtons, Btn); 17] = [
     (PadButtons::L1, Btn::L1),
     (PadButtons::R1, Btn::R1),
-    (PadButtons::L2, Btn::L2),
-    (PadButtons::R2, Btn::R2),
     (PadButtons::L3, Btn::L3),
     (PadButtons::R3, Btn::R3),
     (PadButtons::CROSS, Btn::Cross),
@@ -43,6 +42,8 @@ pub struct Snapshot {
     pub gyro_calibrating: bool,
     pub gyro_bias: [f32; 3],
     pub flick_active: bool,
+    /// Paired button (in the weapon layer) whose second slot the next press gives.
+    pub next_pair: Option<Btn>,
 }
 
 pub struct Engine {
@@ -101,11 +102,18 @@ impl Engine {
             gyro_calibrating: self.gyro.calibrating(),
             gyro_bias: self.gyro.bias(),
             flick_active: self.flick.active(),
+            next_pair: self.profile.layers.iter().find_map(|l| self.buttons.next_pair(Some(l.button))),
         }
     }
 
-    fn inputs(s: &State) -> BTreeSet<Btn> {
+    fn inputs(s: &State, trigger_threshold: f32) -> BTreeSet<Btn> {
         let mut set: BTreeSet<Btn> = PAD_BITS.iter().filter(|(b, _)| s.buttons.contains(*b)).map(|(_, x)| *x).collect();
+        if s.l2 > trigger_threshold {
+            set.insert(Btn::L2);
+        }
+        if s.r2 > trigger_threshold {
+            set.insert(Btn::R2);
+        }
         let finger = s.touch.iter().find(|t| t.active);
         if finger.is_some() {
             set.insert(Btn::Touch);
@@ -126,7 +134,7 @@ impl Engine {
         let dt = self.dt(now, s.timestamp_us);
         self.buttons.tick(now, &self.profile, &mut self.held, sink);
 
-        let current = Self::inputs(s);
+        let current = Self::inputs(s, self.profile.trigger_threshold);
         let released: Vec<Btn> = self.pressed.difference(&current).copied().collect();
         let mut pressed: Vec<Btn> = current.difference(&self.pressed).copied().collect();
         // Layer buttons first, so R2 and □ landing in one report still select the weapon.
@@ -172,31 +180,24 @@ impl Engine {
         }
     }
 
-    fn left_stick(&mut self, stick: [f32; 2], sink: &mut dyn Sink) {
+    /// JSM `NO_MOUSE` stick: a direction is held when its axis exceeds half of the other axis
+    /// (±63.4° sectors, diagonals press two keys); rings split at a rescaled length of `ring`.
+    fn left_stick(&mut self, raw: [f32; 2], sink: &mut dyn Sink) {
         let m = &self.profile.movement;
         if m.mode != MoveMode::Wasd {
             return;
         }
-        let len = (stick[0] * stick[0] + stick[1] * stick[1]).sqrt();
-        let mut want = [false; 4];
-        if len >= m.deadzone {
-            // Overlapping 135° sectors: diagonals press two keys.
-            let a = stick_angle(stick);
-            want[0] = a.abs() < 67.5;
-            want[1] = a < -22.5 && a > -157.5;
-            want[2] = a.abs() > 112.5;
-            want[3] = a > 22.5 && a < 157.5;
-        }
-        let keys = m.keys;
-        let (walk, sprint, ring, deadzone) = (m.walk, m.sprint, m.ring, m.deadzone);
+        let ([x, y], len) = apply_deadzone(raw, m.deadzone);
+        let want = [y > 0.5 * x.abs(), x < -0.5 * y.abs(), y < -0.5 * x.abs(), x > 0.5 * y.abs()];
+        let (keys, walk, sprint, ring) = (m.keys, m.walk, m.sprint, m.ring);
         for i in 0..4 {
             set(&mut self.held, &mut self.move_held[i], want[i], keys[i], sink);
         }
         if let Some(k) = walk {
-            set(&mut self.held, &mut self.walk_held, len >= deadzone && len < ring, k, sink);
+            set(&mut self.held, &mut self.walk_held, len > 0.0 && len < ring, k, sink);
         }
         if let Some(k) = sprint {
-            set(&mut self.held, &mut self.sprint_held, len >= ring, k, sink);
+            set(&mut self.held, &mut self.sprint_held, len > ring, k, sink);
         }
     }
 }
@@ -231,7 +232,9 @@ mod tests {
         let p = Profile::parse("[weapons]\nslots = 4\nkeys = [\"1\",\"2\",\"3\",\"4\"]").unwrap();
         let mut e = Engine::new(p);
         let mut sink = RecordSink::default();
-        e.update(0.0, &state(PadButtons::R2 | PadButtons::CIRCLE, 0), &mut sink);
+        let mut s = state(PadButtons::CIRCLE, 0);
+        s.r2 = 0.3;
+        e.update(0.0, &s, &mut sink);
         assert_eq!(names(&mut sink), ["+3"]);
     }
 

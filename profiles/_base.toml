@@ -39,8 +39,10 @@ cross = "E"                     # use
 square = "R"                    # reload
 triangle = "G"                  # grenade / ability
 circle = "LCtrl"                # crouch
-options = { tap = "Esc", hold = "M" }
-create = { tap = "I", hold = "Tab" }
+options = "Esc"                 # pause
+create = "Tab"                  # stats while held
+dpad_left = "I"                 # inventory
+dpad_right = "M"                # map
 
 [weapons]                       # R2 + □ ✕ ○ △; with 8 slots the second press gives the even slot
 layer = "r2"

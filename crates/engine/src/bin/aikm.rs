@@ -5,6 +5,7 @@
 //! and resumes; Ctrl+C releases every key before exiting.
 
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -64,7 +65,7 @@ fn check(path: &Path) {
 fn describe(b: &engine::profile::Binding) -> String {
     let list = |v: &Vec<engine::Output>| v.iter().map(|o| o.name()).collect::<Vec<_>>().join("+");
     let mut parts = Vec::new();
-    for (name, v) in [("", &b.press), ("тап ", &b.tap), ("удерж. ", &b.hold), ("×2 ", &b.double)] {
+    for (name, v) in [("", &b.press), ("тап ", &b.tap), ("удерж. ", &b.hold), ("×2 ", &b.double), ("повтор ", &b.next)] {
         if !v.is_empty() {
             parts.push(format!("{name}{}", list(v)));
         }
@@ -121,10 +122,58 @@ impl Sink for Out {
     }
 }
 
+/// Hides the controller from games through `aikm-hidhide hide --hold`, keeping aikm itself on the
+/// whitelist. The helper's guard undoes the hiding even if aikm is killed.
+struct Hider {
+    tool: PathBuf,
+    child: Child,
+}
+
+impl Hider {
+    fn start() -> Option<Self> {
+        let me = std::env::current_exe().ok()?;
+        let tool = me.with_file_name("aikm-hidhide.exe");
+        if !tool.exists() {
+            eprintln!("скрытие геймпада: нет {} — собери hidhide-cli", tool.display());
+            return None;
+        }
+        let child = Command::new(&tool)
+            .args(["hide", "--hold", "--allow"])
+            .arg(&me)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn();
+        match child {
+            Ok(child) => {
+                eprintln!("геймпад скрыт от игр (HidHide); aikm его видит");
+                Some(Self { tool, child })
+            }
+            Err(e) => {
+                eprintln!("скрытие геймпада не запустилось: {e}");
+                None
+            }
+        }
+    }
+
+    fn stop(mut self) {
+        // `restore` undoes the journal; the holding helper notices and exits by itself.
+        let _ = Command::new(&self.tool).arg("restore").stdout(Stdio::null()).status();
+        for _ in 0..20 {
+            if matches!(self.child.try_wait(), Ok(Some(_))) {
+                eprintln!("геймпад снова виден играм");
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let _ = self.child.kill();
+    }
+}
+
 fn run(path: &Path, dry: bool) {
     install_ctrl_handler();
     let path: PathBuf = path.to_path_buf();
     let mut engine = Engine::new(load(&path));
+    let hider = if engine.profile.hide_controller && !dry { Hider::start() } else { None };
     let mut out = Out { dry, win: WinSink, rec: RecordSink::default() };
     let start = Instant::now();
     let mut mtime = profiles_mtime(&path);
@@ -204,8 +253,9 @@ fn run(path: &Path, dry: bool) {
             eprint!(
                 "\r{:<110}",
                 format!(
-                    "слой {:<6} │ гироскоп {gyro} │ флик {} │ держу: {}",
+                    "слой {:<6} │ пара {:<8} │ гироскоп {gyro} │ флик {} │ держу: {}",
                     s.layer.map_or("—", |b| b.name()),
+                    s.next_pair.map_or("—", |b| b.name()),
                     if s.flick_active { "да " } else { "нет" },
                     outs.join(" ")
                 )
@@ -215,4 +265,7 @@ fn run(path: &Path, dry: bool) {
 
     engine.release_all(&mut out);
     eprintln!("\nвыход: все клавиши отпущены");
+    if let Some(h) = hider {
+        h.stop();
+    }
 }

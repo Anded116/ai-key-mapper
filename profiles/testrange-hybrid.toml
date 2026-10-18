@@ -1,0 +1,9 @@
+# TestRange reading the left stick itself: analog walk/run, but prompts flicker between
+# keyboard+mouse and controller because the game sees both.
+extends = "testrange"
+
+[controller]
+hide = false
+
+[movement]
+mode = "hybrid"

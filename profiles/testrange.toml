@@ -6,6 +6,16 @@ exe = "testrange.exe"
 real_world = 45.4545            # Source-style 0.022°/count
 in_game_sens = 1.0
 
+# TestRange switches prompts to whichever device moved last, like many games do. With the
+# controller hidden it only ever sees keyboard and mouse: no flicker. Walking then comes from
+# the walk ring instead of analog stick speed. profiles/testrange-hybrid.toml is the other way.
+[controller]
+hide = true
+
+[movement]
+mode = "wasd"
+walk = "LAlt"
+
 [buttons]
 dpad_up = "F"                   # flashlight
 dpad_down = "MouseMiddle"       # ping

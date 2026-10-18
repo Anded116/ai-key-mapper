@@ -6,7 +6,7 @@ cd /d "%~dp0"
 where cargo >nul 2>nul
 if not errorlevel 1 (
   echo Сборка TestRange и движка...
-  cargo build --release -p testrange -p engine
+  cargo build --release -p testrange -p engine -p hidhide-cli
   if errorlevel 1 goto :fail
 )
 if not exist "target\release\testrange.exe" (

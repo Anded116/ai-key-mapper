@@ -22,13 +22,15 @@ N = G                           # Grenade
 E = LCONTROL                    # Crouch
 R3 = V                          # Melee
 
-##### D-pad: items. Left / right and the diagonals stay free for game items.
+##### D-pad: items
 UP = F                          # Flashlight
 DOWN = MMOUSE                   # Ping
+LEFT = I                        # Inventory
+RIGHT = M                       # Map
 
-##### Options / Create: tap / hold
-+ = ESC M                       # Pause / map
-- = I TAB                       # Inventory / stats while held
+##### Options / Create
++ = ESC                         # Pause
+- = TAB                         # Stats while held
 ZR,- = F5                       # Quick save
 ZR,+ = F9                       # Quick load
 

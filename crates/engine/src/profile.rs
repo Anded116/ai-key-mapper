@@ -76,22 +76,24 @@ impl Btn {
 }
 
 /// What a button does. `press` follows the button; `tap`/`hold` split by HOLD time;
-/// `double` fires on a second press within the double-press window.
+/// `double` fires on a second press within the double-press window (the tap waits for the
+/// window to pass, so it never fires together with the double).
 ///
-/// With `press` + `double` the first press acts at once and a quick second press switches to
-/// `double` (weapon pairs: no added latency). With `tap` + `double` the tap waits for the
-/// window to pass, so it never fires together with the double.
+/// `next` is the second weapon of a pair, the way JoyShockMapper presets did it with state
+/// files: pressing the same button again gives `next`, however much later; pressing another
+/// paired button starts over with its `press`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Binding {
     pub press: Vec<Output>,
     pub tap: Vec<Output>,
     pub hold: Vec<Output>,
     pub double: Vec<Output>,
+    pub next: Vec<Output>,
 }
 
 impl Binding {
     pub fn is_empty(&self) -> bool {
-        self.press.is_empty() && self.tap.is_empty() && self.hold.is_empty() && self.double.is_empty()
+        self.press.is_empty() && self.tap.is_empty() && self.hold.is_empty() && self.double.is_empty() && self.next.is_empty()
     }
 }
 
@@ -126,15 +128,25 @@ pub struct GyroCfg {
     pub invert_y: bool,
 }
 
+/// Stick deadzones as in JSM: inside `inner` is zero, the last `outer` of travel is full tilt,
+/// lengths in between are rescaled to 0..1.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Deadzone {
+    pub inner: f32,
+    pub outer: f32,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlickCfg {
     pub enabled: bool,
     /// Seconds to complete a flick.
     pub time: f32,
-    /// Stick deflection that starts a flick.
+    /// Rescaled deflection that starts a flick (JSM: 1.0, i.e. full tilt past the outer deadzone);
+    /// the flick ends below 90% of it.
     pub threshold: f32,
     /// Flicks within ± this many degrees of forward turn into plain rotation.
     pub forward_deadzone: f32,
+    pub deadzone: Deadzone,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,14 +159,14 @@ pub enum MoveMode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MovementCfg {
     pub mode: MoveMode,
-    pub deadzone: f32,
+    pub deadzone: Deadzone,
     /// Forward, left, back, right.
     pub keys: [Output; 4],
-    /// Held while the stick is tilted but not fully (walk).
+    /// Held while the stick is tilted below `ring` (walk).
     pub walk: Option<Output>,
-    /// Held while the stick is fully tilted (sprint).
+    /// Held while the stick is tilted past `ring` (sprint).
     pub sprint: Option<Output>,
-    /// Deflection that separates the inner (walk) ring from the outer one.
+    /// Rescaled deflection between the inner and the outer ring (JSM: 0.7).
     pub ring: f32,
 }
 
@@ -181,6 +193,10 @@ pub struct Profile {
     pub flick: FlickCfg,
     pub movement: MovementCfg,
     pub timing: Timing,
+    /// L2/R2 count as pressed above this analog position (JSM TRIGGER_THRESHOLD: 0 = any pull).
+    pub trigger_threshold: f32,
+    /// Hide the controller from games with HidHide while running (keyboard/mouse-only games).
+    pub hide_controller: bool,
     pub buttons: HashMap<Btn, Binding>,
     pub layers: Vec<Layer>,
 }
@@ -221,6 +237,10 @@ struct Raw {
     movement: RawMovement,
     #[serde(default)]
     timing: RawTiming,
+    #[serde(default)]
+    triggers: RawTriggers,
+    #[serde(default)]
+    controller: RawController,
     #[serde(default)]
     weapons: Option<RawWeapons>,
     #[serde(default)]
@@ -281,11 +301,13 @@ struct RawFlick {
     time: f32,
     threshold: f32,
     forward_deadzone: f32,
+    deadzone_inner: f32,
+    deadzone_outer: f32,
 }
 
 impl Default for RawFlick {
     fn default() -> Self {
-        Self { enabled: true, time: 0.1, threshold: 0.9, forward_deadzone: 0.0 }
+        Self { enabled: true, time: 0.1, threshold: 1.0, forward_deadzone: 0.0, deadzone_inner: 0.15, deadzone_outer: 0.1 }
     }
 }
 
@@ -293,7 +315,8 @@ impl Default for RawFlick {
 #[serde(deny_unknown_fields, default)]
 struct RawMovement {
     mode: String,
-    deadzone: f32,
+    deadzone_inner: f32,
+    deadzone_outer: f32,
     keys: Vec<String>,
     walk: String,
     sprint: String,
@@ -304,11 +327,12 @@ impl Default for RawMovement {
     fn default() -> Self {
         Self {
             mode: "hybrid".into(),
-            deadzone: 0.15,
+            deadzone_inner: 0.15,
+            deadzone_outer: 0.1,
             keys: vec!["W".into(), "A".into(), "S".into(), "D".into()],
             walk: String::new(),
             sprint: String::new(),
-            ring: 0.9,
+            ring: 0.7,
         }
     }
 }
@@ -323,10 +347,21 @@ struct RawTiming {
 
 impl Default for RawTiming {
     fn default() -> Self {
-        Self { hold_ms: 150.0, double_ms: 250.0, tap_ms: 40.0 }
+        Self { hold_ms: 150.0, double_ms: 150.0, tap_ms: 40.0 }
     }
 }
 
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct RawTriggers {
+    threshold: f32,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct RawController {
+    hide: bool,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawWeapons {
@@ -361,6 +396,7 @@ struct RawBindingTable {
     tap: Option<Keys>,
     hold: Option<Keys>,
     double: Option<Keys>,
+    next: Option<Keys>,
 }
 
 // ---------- loading ----------
@@ -469,10 +505,14 @@ fn binding(raw: &RawBinding, ctx: &str) -> Result<Binding, ProfileError> {
             tap: opt_outputs(&t.tap, ctx)?,
             hold: opt_outputs(&t.hold, ctx)?,
             double: opt_outputs(&t.double, ctx)?,
+            next: opt_outputs(&t.next, ctx)?,
         },
     };
     if !b.press.is_empty() && (!b.tap.is_empty() || !b.hold.is_empty()) {
         return err(format!("{ctx}: `press` cannot be combined with `tap`/`hold`"));
+    }
+    if !b.next.is_empty() && b.press.is_empty() {
+        return err(format!("{ctx}: `next` needs `press`"));
     }
     if !b.double.is_empty() && b.press.is_empty() && b.tap.is_empty() {
         return err(format!("{ctx}: `double` needs `press` or `tap`"));
@@ -516,7 +556,7 @@ fn compile(mut raw: Raw, fallback_name: &str) -> Result<Profile, ProfileError> {
         for (i, name) in WEAPON_BUTTONS.iter().enumerate() {
             let table = RawBindingTable {
                 press: Some(Keys::One(w.keys[i * pairs].clone())),
-                double: (pairs == 2).then(|| Keys::One(w.keys[i * 2 + 1].clone())),
+                next: (pairs == 2).then(|| Keys::One(w.keys[i * 2 + 1].clone())),
                 ..RawBindingTable::default()
             };
             layer.insert(name.to_string(), RawBinding::Table(table));
@@ -584,19 +624,29 @@ fn compile(mut raw: Raw, fallback_name: &str) -> Result<Profile, ProfileError> {
             time: raw.flick.time.max(0.0),
             threshold: raw.flick.threshold.clamp(0.3, 1.0),
             forward_deadzone: raw.flick.forward_deadzone.clamp(0.0, 90.0),
+            deadzone: deadzone(raw.flick.deadzone_inner, raw.flick.deadzone_outer, "flick")?,
         },
         movement: MovementCfg {
             mode,
-            deadzone: m.deadzone.clamp(0.0, 0.9),
+            deadzone: deadzone(m.deadzone_inner, m.deadzone_outer, "movement")?,
             keys,
             walk: opt_key(&m.walk, "movement.walk")?,
             sprint: opt_key(&m.sprint, "movement.sprint")?,
-            ring: m.ring.clamp(0.2, 1.0),
+            ring: m.ring.clamp(0.05, 1.0),
         },
         timing: Timing { hold_ms: raw.timing.hold_ms, double_ms: raw.timing.double_ms, tap_ms: raw.timing.tap_ms },
+        trigger_threshold: raw.triggers.threshold.clamp(0.0, 0.99),
+        hide_controller: raw.controller.hide,
         buttons,
         layers,
     })
+}
+
+fn deadzone(inner: f32, outer: f32, ctx: &str) -> Result<Deadzone, ProfileError> {
+    if !(0.0..1.0).contains(&inner) || !(0.0..1.0).contains(&outer) || inner + outer >= 1.0 {
+        return err(format!("{ctx}: deadzone_inner + deadzone_outer must be below 1"));
+    }
+    Ok(Deadzone { inner, outer })
 }
 
 #[cfg(test)]
@@ -630,8 +680,8 @@ mod tests {
         assert!(!p.buttons.contains_key(&Btn::Ps));
         let r2 = p.layers.iter().find(|l| l.button == Btn::R2).unwrap();
         assert_eq!(r2.bindings[&Btn::Square].press, vec![key("1")]);
-        assert_eq!(r2.bindings[&Btn::Square].double, vec![key("2")]);
-        assert_eq!(r2.bindings[&Btn::Triangle].double, vec![key("8")]);
+        assert_eq!(r2.bindings[&Btn::Square].next, vec![key("2")]);
+        assert_eq!(r2.bindings[&Btn::Triangle].next, vec![key("8")]);
         assert_eq!(r2.bindings[&Btn::Create].press, vec![key("F5")]);
     }
 
@@ -640,7 +690,7 @@ mod tests {
         let p = Profile::parse("[weapons]\nslots = 4\nkeys = [\"1\",\"2\",\"3\",\"4\"]").unwrap();
         let r2 = &p.layers[0];
         assert_eq!(r2.bindings[&Btn::Cross].press, vec![key("2")]);
-        assert!(r2.bindings[&Btn::Cross].double.is_empty());
+        assert!(r2.bindings[&Btn::Cross].next.is_empty());
     }
 
     #[test]
