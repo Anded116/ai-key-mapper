@@ -1,0 +1,13 @@
+[package]
+name = "dualsense"
+version = "0.1.0"
+edition = "2021"
+description = "PlayStation controller input/output over HID: DualSense, DualSense Edge, DualShock 4; USB and Bluetooth"
+
+[dependencies]
+hidapi = "2.6.7"
+crc32fast = "1.4"
+
+[[bin]]
+name = "aikm-probe"
+path = "src/bin/aikm-probe.rs"
