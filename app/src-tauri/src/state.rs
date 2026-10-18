@@ -340,24 +340,84 @@ pub fn bindings(mapper: tauri::State<'_, Mapper>) -> Option<Bindings> {
     mapper.bindings.lock().unwrap().clone()
 }
 
-fn active_profile(mapper: &Mapper) -> Result<PathBuf, String> {
-    mapper.profile.lock().unwrap().clone().ok_or_else(|| "профиль не загружен: открой игру с профилем".to_string())
+/// Профиль из папки `profiles` по имени файла; путей с каталогами не принимает.
+fn profile_file(file: &str) -> Result<PathBuf, String> {
+    let ok = file.ends_with(".toml") && !file.contains(['/', '\\']) && !file.contains("..");
+    let path = repo_root().join("profiles").join(file);
+    if ok && path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!("нет профиля {file}"))
+    }
 }
 
-/// Записать привязку кнопки в профиль игры; движок перечитает его сам.
-#[tauri::command]
-pub fn set_binding(
-    button: String,
-    layer: Option<String>,
-    edit: edit::Edit,
-    note: String,
-    mapper: tauri::State<'_, Mapper>,
-) -> Result<(), String> {
-    edit::set(&active_profile(&mapper)?, &button, layer.as_deref(), &edit, &note)
+#[derive(Serialize, Clone, Debug)]
+pub struct ProfileInfo {
+    pub file: String,
+    pub name: String,
+    pub exe: Option<String>,
+    /// `_base.toml` и прочие файлы на `_`: стандарт, его наследуют игры.
+    pub base: bool,
 }
 
-/// Вернуть кнопке привязку из базового профиля.
+/// Все профили папки `profiles`: стандарт первым, игры по имени.
 #[tauri::command]
-pub fn reset_binding(button: String, layer: Option<String>, mapper: tauri::State<'_, Mapper>) -> Result<(), String> {
-    edit::reset(&active_profile(&mapper)?, &button, layer.as_deref())
+pub fn profiles() -> Vec<ProfileInfo> {
+    let Ok(entries) = std::fs::read_dir(repo_root().join("profiles")) else { return Vec::new() };
+    let mut list: Vec<ProfileInfo> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "toml"))
+        .filter_map(|p| {
+            let file = p.file_name()?.to_string_lossy().to_string();
+            let base = file.starts_with('_');
+            let profile = Profile::load(&p).ok()?;
+            let name = if file == "_base.toml" { "Стандарт".to_string() } else { profile.game };
+            Some(ProfileInfo { file, name, exe: profile.exe, base })
+        })
+        .collect();
+    list.sort_by(|a, b| b.base.cmp(&a.base).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    list
+}
+
+/// Привязки любого профиля — смотреть и править без запущенной игры.
+#[tauri::command]
+pub fn profile_bindings(file: String) -> Result<Bindings, String> {
+    let path = profile_file(&file)?;
+    Bindings::load(&path).ok_or_else(|| format!("профиль {file} не загружается"))
+}
+
+/// Записать привязку кнопки в профиль; если он сейчас активен, движок перечитает его сам.
+#[tauri::command]
+pub fn set_binding(file: String, button: String, layer: Option<String>, edit: edit::Edit, note: String) -> Result<(), String> {
+    edit::set(&profile_file(&file)?, &button, layer.as_deref(), &edit, &note)
+}
+
+/// Вернуть кнопке привязку из стандарта.
+#[tauri::command]
+pub fn reset_binding(file: String, button: String, layer: Option<String>) -> Result<(), String> {
+    edit::reset(&profile_file(&file)?, &button, layer.as_deref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profiles_list_standard_first() {
+        let list = profiles();
+        assert_eq!(list[0].file, "_base.toml");
+        assert_eq!(list[0].name, "Стандарт");
+        assert!(list.iter().any(|p| p.file == "SonsOfTheForest.toml" && !p.base));
+        let base = profile_bindings("_base.toml".into()).unwrap();
+        assert_eq!(base.buttons["down"].note.as_deref(), Some("фонарик"));
+    }
+
+    #[test]
+    fn only_files_inside_profiles() {
+        assert!(profile_file("../Cargo.toml").is_err());
+        assert!(profile_file("..\\x.toml").is_err());
+        assert!(profile_file("nope.toml").is_err());
+        assert!(profile_file("testrange.toml").is_ok());
+    }
 }

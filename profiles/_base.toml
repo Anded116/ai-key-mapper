@@ -41,6 +41,7 @@ triangle = "G"                  # граната / способность
 circle = "LCtrl"                # присед
 options = "Esc"                 # пауза
 create = "Tab"                  # статистика, пока держишь
+dpad_down = "F"                 # фонарик
 dpad_left = "I"                 # инвентарь
 dpad_right = "M"                # карта
 

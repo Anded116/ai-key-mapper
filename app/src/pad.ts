@@ -1,119 +1,225 @@
-import type { PadState } from './types'
+import { keyFace } from './keys'
+import type { BindingEntry, Bindings, PadState } from './types'
 
-/** Схема DualSense: контуры кнопок с `data-btn`, живые стики, курки и касания тачпада. */
+/**
+ * Геймпад с раскладкой прямо на кнопках: на каждой — клавиша, которую она шлёт в игру (буквы
+ * по-русски, как их пишет игра). Наведение и нажатие выбирают кнопку, клик — правка.
+ */
 
-const DPAD = { x: 175, y: 205 }
-const FACE = { x: 625, y: 205 }
-const STICK_L = { x: 290, y: 305 }
-const STICK_R = { x: 510, y: 305 }
-const STICK_TRAVEL = 22
-const TOUCH = { x: 290, y: 98, w: 220, h: 126 }
-const TRIGGER_W = 120
+const SVG = 'http://www.w3.org/2000/svg'
+const DPAD = { x: 219, y: 262 }
+const FACE = { x: 781, y: 262 }
+const STICK_L = { x: 362, y: 392 }
+const STICK_R = { x: 638, y: 392 }
+const STICK_TRAVEL = 20
+const TOUCH = { x: 355, y: 122, w: 290, h: 163 }
+const TRIGGER_W = 210
 
-/** Куда в схеме упирается выноска каждой кнопки. */
-export const ANCHORS: Record<string, [number, number]> = {
-  l2: [210, 37], r2: [590, 37], l1: [210, 75], r1: [590, 75],
-  create: [257, 132], options: [543, 132], pad_left: [340, 175], pad_right: [460, 175],
-  up: [175, 172], left: [142, 205], right: [208, 205], down: [175, 238],
-  triangle: [625, 160], square: [580, 205], circle: [670, 205], cross: [625, 250],
-  move: [262, 284], l3: [290, 305], r3: [510, 305], ps: [400, 280], mic: [400, 311],
+const BODY = `M 287 125 C 412 110, 587 110, 712 125 C 812 135, 875 162, 900 237 C 931 337, 962 475, 950 550
+  C 940 612, 862 625, 825 587 C 787 550, 750 475, 700 440 C 650 415, 350 415, 300 440
+  C 250 475, 212 550, 175 587 C 137 625, 60 612, 50 550 C 37 475, 69 337, 100 237 C 125 162, 187 135, 287 125 Z`
+
+/** Где и как рисовать подпись каждой кнопки. `cap` — плашка рядом с мелкой кнопкой. */
+const LABELS: Record<string, { x: number; y: number; w: number; cap?: boolean }> = {
+  l2: { x: 280, y: 44, w: 190 }, r2: { x: 720, y: 44, w: 190 },
+  l1: { x: 280, y: 91, w: 190 }, r1: { x: 720, y: 91, w: 190 },
+  create: { x: 262, y: 150, w: 70, cap: true }, options: { x: 738, y: 150, w: 70, cap: true },
+  pad_left: { x: 427, y: 205, w: 130 }, pad_right: { x: 573, y: 205, w: 130 },
+  up: { x: DPAD.x, y: DPAD.y - 46, w: 46 }, down: { x: DPAD.x, y: DPAD.y + 46, w: 46 },
+  left: { x: DPAD.x - 46, y: DPAD.y, w: 46 }, right: { x: DPAD.x + 46, y: DPAD.y, w: 46 },
+  triangle: { x: FACE.x, y: FACE.y - 64, w: 58 }, circle: { x: FACE.x + 64, y: FACE.y, w: 58 },
+  cross: { x: FACE.x, y: FACE.y + 64, w: 58 }, square: { x: FACE.x - 64, y: FACE.y, w: 58 },
+  l3: { x: STICK_L.x, y: STICK_L.y, w: 70 }, r3: { x: STICK_R.x, y: STICK_R.y, w: 70 },
+  ps: { x: 500, y: 318, w: 90, cap: true }, mic: { x: 500, y: 436, w: 90, cap: true },
+  mv0: { x: STICK_L.x, y: STICK_L.y - 84, w: 40, cap: true }, mv1: { x: STICK_L.x - 86, y: STICK_L.y, w: 40, cap: true },
+  mv2: { x: STICK_L.x, y: STICK_L.y + 84, w: 40, cap: true }, mv3: { x: STICK_L.x + 86, y: STICK_L.y, w: 40, cap: true },
 }
 
-const BODY = `M 230 100 C 330 88, 470 88, 570 100 C 650 108, 700 130, 720 190 C 745 270, 770 380, 760 440
-  C 752 490, 690 500, 660 470 C 630 440, 600 380, 560 352 C 520 332, 280 332, 240 352
-  C 200 380, 170 440, 140 470 C 110 500, 48 490, 40 440 C 30 380, 55 270, 80 190 C 100 130, 150 108, 230 100 Z`
-
 function dpad(): string {
-  const arrow = '-15,-48 15,-48 15,-21 0,-7 -15,-21'
+  const arm = '-25,-76 25,-76 25,-30 0,-12 -25,-30'
   return (['up', 'right', 'down', 'left'] as const)
-    .map((b, i) => `<polygon class="btn" data-btn="${b}" points="${arrow}"
+    .map((b, i) => `<polygon class="btn" data-btn="${b}" data-id="${b}" points="${arm}"
       transform="translate(${DPAD.x} ${DPAD.y}) rotate(${i * 90})" />`)
     .join('')
 }
 
 function face(): string {
-  const at = { triangle: [0, -45], circle: [45, 0], cross: [0, 45], square: [-45, 0] } as const
+  const at = { triangle: [0, -64], circle: [64, 0], cross: [0, 64], square: [-64, 0] } as const
   const glyph = {
-    triangle: '<polygon points="0,-8 7.5,5.5 -7.5,5.5" />',
-    circle: '<circle r="7" />',
-    cross: '<path d="M -6 -6 L 6 6 M 6 -6 L -6 6" />',
-    square: '<rect x="-6" y="-6" width="12" height="12" />',
+    triangle: '<polygon points="0,-5 4.5,3.5 -4.5,3.5" />',
+    circle: '<circle r="4.2" />',
+    cross: '<path d="M -3.7 -3.7 L 3.7 3.7 M 3.7 -3.7 L -3.7 3.7" />',
+    square: '<rect x="-3.7" y="-3.7" width="7.4" height="7.4" />',
   }
   return (Object.keys(at) as (keyof typeof at)[])
     .map((b) => `<g transform="translate(${FACE.x + at[b][0]} ${FACE.y + at[b][1]})">
-      <circle class="btn" data-btn="${b}" r="20" />
-      <g class="glyph glyph-${b}">${glyph[b]}</g></g>`)
+      <circle class="btn" data-btn="${b}" data-id="${b}" r="33" />
+      <g class="glyph glyph-${b}" transform="translate(0 -21)">${glyph[b]}</g></g>`)
     .join('')
 }
 
 function stick(id: 'l' | 'r', c: { x: number; y: number }): string {
-  return `<circle class="stick-base" cx="${c.x}" cy="${c.y}" r="44" />
-    <g id="stick-${id}"><circle class="btn stick-cap" data-btn="${id}3" cx="${c.x}" cy="${c.y}" r="27" />
-    <circle class="stick-dot" cx="${c.x}" cy="${c.y}" r="3" /></g>`
+  return `<circle class="stick-base" cx="${c.x}" cy="${c.y}" r="62" />
+    <g id="stick-${id}"><circle class="btn stick-cap" data-btn="${id}3" data-id="${id}3" cx="${c.x}" cy="${c.y}" r="40" /></g>`
 }
 
-function trigger(id: 'l2' | 'r2', x: number): string {
-  return `<rect class="btn trigger" data-btn="${id}" x="${x}" y="22" width="${TRIGGER_W}" height="30" rx="11" />
-    <rect class="trigger-fill" id="fill-${id}" x="${x}" y="22" width="0" height="30" rx="11" />`
+/** Текст подписи: крупно клавиша, мелко латиница или второе действие. */
+function label(e: BindingEntry, maxW: number, cap: boolean): SVGGElement {
+  const g = document.createElementNS(SVG, 'g')
+  const first = e.parts[0]
+  const second = e.parts[1]
+  const text = document.createElementNS(SVG, 'text')
+  text.setAttribute('class', 'k')
+  // латиница — мелким верхним индексом; следующий кусок возвращается на базовую линию
+  let raised = false
+  const put = (s: string, cls: string, sup = false) => {
+    const t = tspan(s, cls)
+    if (sup) {
+      t.setAttribute('dy', '-8')
+      t.setAttribute('dx', '2')
+    } else if (raised) {
+      t.setAttribute('dy', '8')
+    }
+    raised = sup
+    text.appendChild(t)
+  }
+  const face = (k: string) => {
+    const f = keyFace(k)
+    put(f.main, f.wide ? 'k-word' : 'k-main')
+    if (f.sub) put(f.sub, 'k-sub', true)
+  }
+  first.keys.forEach((k, i) => {
+    if (i > 0) put(' + ', 'k-sep')
+    face(k)
+  })
+  if (second && second.how === 'next') {
+    put(' / ', 'k-sep')
+    second.keys.forEach(face)
+  }
+  g.appendChild(text)
+  const extra = second && second.how !== 'next' ? second : first.how === 'latch' ? first : null
+  if (extra) {
+    const t = document.createElementNS(SVG, 'text')
+    t.setAttribute('class', 'k-extra')
+    t.setAttribute('y', '15')
+    t.textContent = extra.how === 'latch' ? 'клик' : `${extra.how === 'hold' ? 'держать' : '×2'} ${extra.keys.map((k) => keyFace(k).main).join('+')}`
+    g.appendChild(t)
+    text.setAttribute('y', '-3')
+  }
+  // подгоняем под кнопку: ужимаем, если не влезает
+  requestAnimationFrame(() => {
+    const box = g.getBBox()
+    if (box.width > maxW) g.setAttribute('transform', `${g.getAttribute('transform') ?? ''} scale(${(maxW / box.width).toFixed(3)})`)
+    if (cap) {
+      const r = document.createElementNS(SVG, 'rect')
+      const w = Math.min(box.width, maxW) + 14
+      r.setAttribute('class', 'k-cap')
+      r.setAttribute('x', String(-w / 2))
+      r.setAttribute('y', String(-15))
+      r.setAttribute('width', String(w))
+      r.setAttribute('height', extra ? '36' : '28')
+      r.setAttribute('rx', '7')
+      g.parentElement?.insertBefore(r, g)
+    }
+  })
+  return g
 }
 
-export function mountPad(root: HTMLElement) {
-  root.innerHTML = `<svg viewBox="20 10 760 500" class="pad" xmlns="http://www.w3.org/2000/svg">
-    ${trigger('l2', 150)}${trigger('r2', 530)}
-    <rect class="btn" data-btn="l1" x="150" y="64" width="120" height="20" rx="10" />
-    <rect class="btn" data-btn="r1" x="530" y="64" width="120" height="20" rx="10" />
+function tspan(text: string, cls: string): SVGTSpanElement {
+  const t = document.createElementNS(SVG, 'tspan')
+  t.textContent = text
+  t.setAttribute('class', cls)
+  return t
+}
+
+export function mountPad(root: HTMLElement, onHover: (id: string | null) => void, onPick: (id: string) => void) {
+  root.innerHTML = `<svg viewBox="30 8 940 630" class="pad" xmlns="http://www.w3.org/2000/svg">
+    <rect class="btn trigger" data-btn="l2" data-id="l2" x="175" y="20" width="${TRIGGER_W}" height="48" rx="16" />
+    <rect class="trigger-fill" id="fill-l2" x="175" y="20" width="0" height="48" rx="16" />
+    <rect class="btn trigger" data-btn="r2" data-id="r2" x="615" y="20" width="${TRIGGER_W}" height="48" rx="16" />
+    <rect class="trigger-fill" id="fill-r2" x="615" y="20" width="0" height="48" rx="16" />
+    <rect class="btn" data-btn="l1" data-id="l1" x="175" y="75" width="${TRIGGER_W}" height="32" rx="16" />
+    <rect class="btn" data-btn="r1" data-id="r1" x="615" y="75" width="${TRIGGER_W}" height="32" rx="16" />
     <path class="body" d="${BODY}" />
-    <rect class="btn touchpad" data-btn="touchpad" x="${TOUCH.x}" y="${TOUCH.y}" width="${TOUCH.w}" height="${TOUCH.h}" rx="16" />
-    <line class="touch-split" x1="400" y1="${TOUCH.y + 18}" x2="400" y2="${TOUCH.y + TOUCH.h - 18}" />
+    <rect class="btn touchpad" data-btn="touchpad" x="${TOUCH.x}" y="${TOUCH.y}" width="${TOUCH.w}" height="${TOUCH.h}" rx="22" />
+    <line class="touch-split" x1="500" y1="${TOUCH.y + 22}" x2="500" y2="${TOUCH.y + TOUCH.h - 22}" />
+    <rect class="hit" data-id="pad_left" x="${TOUCH.x}" y="${TOUCH.y}" width="${TOUCH.w / 2}" height="${TOUCH.h}" />
+    <rect class="hit" data-id="pad_right" x="500" y="${TOUCH.y}" width="${TOUCH.w / 2}" height="${TOUCH.h}" />
     <g id="touches"></g>
-    <rect class="btn" data-btn="create" x="250" y="116" width="14" height="32" rx="7" />
-    <rect class="btn" data-btn="options" x="536" y="116" width="14" height="32" rx="7" />
-    <circle class="btn" data-btn="ps" cx="400" cy="280" r="13" />
-    <rect class="btn" data-btn="mic" x="385" y="306" width="30" height="9" rx="4.5" />
+    <rect class="btn" data-btn="create" data-id="create" x="308" y="140" width="18" height="44" rx="9" />
+    <rect class="btn" data-btn="options" data-id="options" x="674" y="140" width="18" height="44" rx="9" />
+    <circle class="btn" data-btn="ps" data-id="ps" cx="500" cy="362" r="17" />
+    <rect class="btn" data-btn="mic" data-id="mic" x="478" y="396" width="44" height="12" rx="6" />
     ${dpad()}${face()}${stick('l', STICK_L)}${stick('r', STICK_R)}
-    <g id="anchors"></g>
+    <g id="labels"></g>
   </svg>`
 
   const svg = root.querySelector('svg')!
-  const buttons = [...svg.querySelectorAll<SVGElement>('[data-btn]')]
+  const shapes = [...svg.querySelectorAll<SVGElement>('[data-btn]')]
+  const hits = [...svg.querySelectorAll<SVGElement>('[data-id]')]
+  const layer = svg.querySelector<SVGGElement>('#labels')!
   const touches = svg.querySelector<SVGGElement>('#touches')!
   const caps = { l: svg.querySelector('#stick-l')!, r: svg.querySelector('#stick-r')! }
   const fills = { l2: svg.querySelector('#fill-l2')!, r2: svg.querySelector('#fill-r2')! }
+  let labels: Record<string, SVGGElement> = {}
 
-  const moveStick = (id: 'l' | 'r', [x, y]: [number, number]) => {
-    caps[id].setAttribute('transform', `translate(${(x * STICK_TRAVEL).toFixed(1)} ${(-y * STICK_TRAVEL).toFixed(1)})`)
+  for (const el of hits) {
+    el.addEventListener('mouseenter', () => onHover(el.dataset.id!))
+    el.addEventListener('mouseleave', () => onHover(null))
+    el.addEventListener('click', () => onPick(el.dataset.id!))
   }
 
-  /** Точка привязки выноски в координатах страницы. */
-  const anchorAt = (id: string): DOMPoint | null => {
-    const a = ANCHORS[id]
-    const m = svg.getScreenCTM()
-    if (!a || !m) return null
-    return new DOMPoint(a[0], a[1]).matrixTransform(m)
+  /** Подписи для профиля и показанного слоя: кнопки слоя поверх, остальные приглушены. */
+  const setLabels = (b: Bindings | null, view: string | null, wasd: boolean) => {
+    layer.replaceChildren()
+    labels = {}
+    if (!b) return
+    const layerMap = view ? b.layers[view] ?? {} : {}
+    const add = (id: string, e: BindingEntry | undefined, cls: string) => {
+      const at = LABELS[id]
+      if (!at || !e || !e.parts.length || !e.parts[0].keys.length) return
+      const g = document.createElementNS(SVG, 'g')
+      g.setAttribute('class', `label ${cls}`)
+      g.setAttribute('transform', `translate(${at.x} ${at.y})`)
+      g.dataset.id = id
+      g.appendChild(label(e, at.w, Boolean(at.cap)))
+      layer.appendChild(g)
+      labels[id] = g
+    }
+    for (const id of Object.keys(LABELS)) {
+      if (id.startsWith('mv')) continue
+      if (b.layers[id] && !b.buttons[id]) {
+        add(id, { parts: [{ how: 'press', keys: ['слой'] }], note: null, own: false }, view === id ? 'layer-key' : 'layer-key idle')
+        continue
+      }
+      const own = layerMap[id]
+      add(id, own ?? b.buttons[id], own ? 'in-layer' : view ? 'dim' : '')
+    }
+    if (wasd) b.move_keys.forEach((k, i) => add(`mv${i}`, { parts: [{ how: 'press', keys: [k] }], note: null, own: false }, view ? 'dim' : 'move'))
   }
 
-  /** Подсветить кнопку, на чью строку навели мышь. */
-  const focus = (id: string | null) => {
-    const target = id === 'move' ? 'l3' : id === 'pad_left' || id === 'pad_right' ? 'touchpad' : id
-    for (const el of buttons) el.classList.toggle('focus', el.dataset.btn === target)
+  const select = (id: string | null) => {
+    for (const el of hits) el.classList.toggle('selected', el.dataset.id === id)
   }
 
   const draw = (s: PadState) => {
     const pressed = new Set(s.buttons.map((b) => b.toLowerCase()))
-    for (const el of buttons) el.classList.toggle('on', pressed.has(el.dataset.btn!))
-    moveStick('l', s.sticks.left)
-    moveStick('r', s.sticks.right)
+    if (pressed.has('touchpad') && s.touch.length) pressed.add(s.touch[0].x < 0.5 ? 'pad_left' : 'pad_right')
+    for (const el of shapes) el.classList.toggle('on', pressed.has(el.dataset.btn!))
+    for (const [id, g] of Object.entries(labels)) g.classList.toggle('on', pressed.has(id))
+    caps.l.setAttribute('transform', `translate(${(s.sticks.left[0] * STICK_TRAVEL).toFixed(1)} ${(-s.sticks.left[1] * STICK_TRAVEL).toFixed(1)})`)
+    caps.r.setAttribute('transform', `translate(${(s.sticks.right[0] * STICK_TRAVEL).toFixed(1)} ${(-s.sticks.right[1] * STICK_TRAVEL).toFixed(1)})`)
     fills.l2.setAttribute('width', (TRIGGER_W * s.triggers.l2).toFixed(1))
     fills.r2.setAttribute('width', (TRIGGER_W * s.triggers.r2).toFixed(1))
     const key = s.touch.map((t) => `${t.x.toFixed(3)},${t.y.toFixed(3)}`).join(' ')
     if (touches.dataset.key !== key) {
       touches.dataset.key = key
       touches.innerHTML = s.touch
-        .map((t) => `<circle class="touch" cx="${(TOUCH.x + t.x * TOUCH.w).toFixed(1)}" cy="${(TOUCH.y + t.y * TOUCH.h).toFixed(1)}" r="8" />`)
+        .map((t) => `<circle class="touch" cx="${(TOUCH.x + t.x * TOUCH.w).toFixed(1)}" cy="${(TOUCH.y + t.y * TOUCH.h).toFixed(1)}" r="9" />`)
         .join('')
     }
-    svg.classList.toggle('layer-r2', s.layer === 'r2')
+    return pressed
   }
 
-  return { svg, draw, anchorAt, focus }
+  return { draw, setLabels, select }
 }

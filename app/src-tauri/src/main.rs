@@ -19,6 +19,8 @@ fn main() {
             agent::reset_chat,
             agent::chat_history,
             state::bindings,
+            state::profiles,
+            state::profile_bindings,
             state::set_binding,
             state::reset_binding,
             state::set_paused,

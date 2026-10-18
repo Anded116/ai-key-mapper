@@ -6,7 +6,7 @@ import type { BindingEntry, Bindings } from './types'
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
 
-const TITLE: Record<string, string> = {
+export const TITLE: Record<string, string> = {
   l1: 'L1', r1: 'R1', l2: 'L2', r2: 'R2', l3: 'L3 — клик левого стика', r3: 'R3 — клик правого стика',
   cross: '✕', circle: '○', square: '□', triangle: '△',
   up: 'Крестовина ↑', down: 'Крестовина ↓', left: 'Крестовина ←', right: 'Крестовина →',
@@ -48,7 +48,7 @@ function fromEntry(e: BindingEntry | undefined): { mode: Mode; edit: Edit } {
   return { mode, edit }
 }
 
-export function mountEditor(root: HTMLElement, getBindings: () => Bindings | null) {
+export function mountEditor(root: HTMLElement, getBindings: () => Bindings | null, onSaved: () => void) {
   let id = ''
   let layer: string | null = null
   let mode: Mode = 'press'
@@ -97,7 +97,7 @@ export function mountEditor(root: HTMLElement, getBindings: () => Bindings | nul
     root.innerHTML = `<div class="dialog" role="dialog" aria-label="Хоткей">
       <header>
         <div><div class="dialog-title">${layer ? 'R2 + ' : ''}${TITLE[id] ?? id}</div>
-        <div class="dialog-sub">${b?.profile ?? ''} · ${b?.file ?? ''}</div></div>
+        <div class="dialog-sub">${b?.file.startsWith('_') ? 'Стандарт — для всех игр' : b?.profile ?? ''} · ${b?.file ?? ''}</div></div>
         <button class="icon-btn" data-act="close" title="Закрыть">×</button>
       </header>
       <label class="field"><span>Что делает в игре</span>
@@ -108,7 +108,7 @@ export function mountEditor(root: HTMLElement, getBindings: () => Bindings | nul
       ${mode === 'taphold' ? `<div class="hint">Удержание срабатывает через ${MENU.has(id) ? 500 : 150} мс.</div>` : ''}
       <footer>
         <div class="left">
-          ${entry?.own ? '<button class="ghost" data-act="reset" title="Убрать правку игры, вернуть привязку из базового профиля">Как в базовом</button>' : ''}
+          ${entry?.own && !b?.file.startsWith('_') ? '<button class="ghost" data-act="reset" title="Убрать правку игры, вернуть привязку из стандарта">Как в стандарте</button>' : ''}
           <button class="ghost" data-act="unbind">Ничего не делать</button>
         </div>
         <div class="right"><button class="ghost" data-act="close">Отмена</button><button class="primary" data-act="save">Сохранить</button></div>
@@ -125,8 +125,9 @@ export function mountEditor(root: HTMLElement, getBindings: () => Bindings | nul
     for (const [, field] of spec.slots) out[field] = e[field] as never
     if (mode === 'taphold' && MENU.has(id)) out.hold_ms = 500
     try {
-      await invoke('set_binding', { button: PROFILE_NAME[id] ?? id, layer, edit: out, note })
+      await invoke('set_binding', { file: getBindings()!.file, button: PROFILE_NAME[id] ?? id, layer, edit: out, note })
       close()
+      onSaved()
     } catch (err) {
       document.getElementById('ed-error')!.textContent = String(err)
     }
@@ -163,8 +164,9 @@ export function mountEditor(root: HTMLElement, getBindings: () => Bindings | nul
       await save({ press: [] })
     } else if (t.dataset.act === 'reset') {
       try {
-        await invoke('reset_binding', { button: PROFILE_NAME[id] ?? id, layer })
+        await invoke('reset_binding', { file: getBindings()!.file, button: PROFILE_NAME[id] ?? id, layer })
         close()
+        onSaved()
       } catch (err) {
         document.getElementById('ed-error')!.textContent = String(err)
       }

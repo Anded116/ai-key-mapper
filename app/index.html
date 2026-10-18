@@ -38,9 +38,25 @@
         </div>
       </header>
 
-      <main class="sheet" id="sheet">
+      <aside class="side">
+        <section>
+          <h4>Профиль</h4>
+          <ul class="profiles" id="profiles"></ul>
+        </section>
+        <section>
+          <h4>Слой</h4>
+          <div class="segmented" id="layer-switch">
+            <button data-view="">Основной</button>
+            <button data-view="r2">R2</button>
+          </div>
+          <p class="side-hint">Держи R2 на геймпаде — схема сама покажет его клавиши.</p>
+        </section>
+        <section class="inspect" id="inspect"></section>
+      </aside>
+
+      <main class="stage" id="stage">
         <div class="padbox" id="pad"></div>
-        <div class="sheet-empty" id="sheet-empty">Открой игру с профилем — здесь появится её раскладка.<br />Профиль ещё не собран? Попроси агента в чате.</div>
+        <div class="stage-note" id="stage-note"></div>
       </main>
 
       <footer class="footer">
@@ -55,7 +71,7 @@
           <button id="chat-reset" class="ghost" title="Следующее сообщение начнёт новую сессию; прежняя останется в архиве">Новый диалог</button>
         </header>
         <div class="feed" id="feed">
-          <div class="msg system">Опиши игру — агент соберёт под неё раскладку. Хоткей можно поменять и сам: кликни по строке на схеме.</div>
+          <div class="msg system">Опиши игру — агент соберёт под неё раскладку. Хоткей можно поменять и сам: кликни по кнопке на схеме.</div>
         </div>
         <form class="composer" id="composer">
           <textarea id="input" rows="3" placeholder="Например: сделай профиль для Sons of the Forest"></textarea>

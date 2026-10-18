@@ -1,28 +1,108 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { mountPad } from './pad'
-import { mountSheet } from './sheet'
 import { mountEditor } from './editor'
+import { renderInspector } from './inspector'
 import { mountChat } from './chat'
 import { keyFace } from './keys'
 import type { Bindings, PadState } from './types'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
-let bindings: Bindings | null = null
-const pad = mountPad($('pad'))
-const editor = mountEditor($('editor'), () => bindings)
-const sheet = mountSheet($('sheet'), pad, (id, layer) => editor.open(id, layer))
+interface ProfileInfo {
+  file: string
+  name: string
+  exe: string | null
+  base: boolean
+}
+
+/** Что показано: какой профиль, какой слой, какая кнопка. */
+let profiles: ProfileInfo[] = []
+let viewed: Bindings | null = null
+let activeFile: string | null = null
+let pinnedLayer: string | null = null
+let heldLayer: string | null = null
+let wasd = false
+let hovered: string | null = null
+let selected: string | null = null
+let lastPressed = new Set<string>()
+
+const editor = mountEditor($('editor'), () => viewed, () => void refresh())
+const pad = mountPad(
+  $('pad'),
+  (id) => { hovered = id; inspect() },
+  (id) => { selected = id; editor.open(id, view()) },
+)
 mountChat()
 
-const showBindings = (b: Bindings | null) => {
-  bindings = b
-  $('sheet').classList.toggle('has-profile', Boolean(b))
-  sheet.setBindings(b)
+const view = () => heldLayer ?? pinnedLayer
+
+function inspect() {
+  const id = hovered ?? selected
+  pad.select(id)
+  renderInspector($('inspect'), viewed, id, (b, layer) => editor.open(b, layer))
 }
-listen<Bindings | null>('bindings', ({ payload }) => showBindings(payload))
+
+function relabel() {
+  pad.setLabels(viewed, view(), wasd)
+  for (const btn of $('layer-switch').querySelectorAll<HTMLElement>('button')) {
+    btn.classList.toggle('active', (btn.dataset.view || null) === view())
+  }
+  $('stage').classList.toggle('layer-view', Boolean(view()))
+}
+
+function drawProfiles() {
+  $('profiles').innerHTML = profiles
+    .map((p) => {
+      const on = viewed?.file === p.file
+      const live = p.file === activeFile
+      return `<li><button class="${on ? 'active' : ''}" data-file="${p.file}" title="${p.file}">
+        <span class="p-name">${p.name}</span>${live ? '<span class="p-live">в игре</span>' : p.base ? '<span class="p-tag">для всех игр</span>' : ''}</button></li>`
+    })
+    .join('')
+}
+
+async function show(file: string | null) {
+  viewed = file ? await invoke<Bindings>('profile_bindings', { file }).catch(() => null) : null
+  $('stage-note').textContent = viewed
+    ? viewed.file.startsWith('_')
+      ? 'Стандарт: игры его наследуют и меняют только своё. Правка здесь меняет все игры, где кнопка не переопределена.'
+      : ''
+    : 'Выбери профиль слева.'
+  drawProfiles()
+  relabel()
+  inspect()
+}
+
+async function refresh() {
+  profiles = await invoke<ProfileInfo[]>('profiles').catch(() => [])
+  await show(viewed?.file ?? activeFile ?? profiles[0]?.file ?? null)
+}
+
+$('profiles').addEventListener('click', (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-file]')
+  if (btn) void show(btn.dataset.file!)
+})
+$('layer-switch').addEventListener('click', (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLElement>('button')
+  if (!btn) return
+  pinnedLayer = btn.dataset.view || null
+  relabel()
+})
+
+// Профиль игры в фокусе: показываем его сам, а правки из файла приходят тем же событием.
+listen<Bindings | null>('bindings', ({ payload }) => {
+  const file = payload?.file ?? null
+  const switched = file !== activeFile
+  activeFile = file
+  if (file && (switched || viewed?.file === file)) void refresh().then(() => show(file))
+  else drawProfiles()
+})
   .then(() => invoke<Bindings | null>('bindings'))
-  .then(showBindings)
+  .then((b) => {
+    activeFile = b?.file ?? null
+    return refresh()
+  })
 
 // Чат — шторка справа; открыта ли она, окно помнит.
 const CHAT_KEY = 'aikm.chat-open'
@@ -31,8 +111,8 @@ const setChat = (open: boolean) => {
   $('chat-toggle').classList.toggle('active', open)
   try { localStorage.setItem(CHAT_KEY, open ? '1' : '0') } catch { /* окно без хранилища */ }
 }
-let chatOpen = true
-try { chatOpen = localStorage.getItem(CHAT_KEY) !== '0' } catch { /* окно без хранилища */ }
+let chatOpen = false
+try { chatOpen = localStorage.getItem(CHAT_KEY) === '1' } catch { /* окно без хранилища */ }
 setChat(chatOpen)
 $('chat-toggle').addEventListener('click', () => setChat(!$('app').classList.contains('chat-open')))
 
@@ -61,7 +141,7 @@ function drawTop(s: PadState) {
         : e.focused
           ? ['работает', 'ok']
           : ['игра не в фокусе', 'off']
-  put('profile', s.profile ?? 'Нет профиля')
+  put('profile', s.profile ?? 'Нет игры')
   put('engine-state', state)
   $('status-dot').dataset.tone = tone
 
@@ -87,14 +167,32 @@ function drawTop(s: PadState) {
   put('outputs', s.outputs.map((o) => `<span class="mini-cap">${keyFace(o).main}</span>`).join('') || '<span class="faint">ничего</span>', true)
 }
 
+function drawPad(s: PadState) {
+  const held = s.layer
+  const isWasd = s.engine.movement === 'wasd'
+  if (held !== heldLayer || isWasd !== wasd) {
+    heldLayer = held
+    wasd = isWasd
+    relabel()
+  }
+  const pressed = pad.draw(s)
+  // нажал кнопку на геймпаде — карточка показывает её
+  for (const id of pressed) {
+    if (!lastPressed.has(id) && id !== 'touchpad' && id !== heldLayer) {
+      selected = id
+      inspect()
+    }
+  }
+  lastPressed = pressed
+}
+
 $('pause').addEventListener('click', () => invoke('set_paused', { paused: !paused }))
 $('calibrate').addEventListener('click', () => invoke('calibrate'))
 
 // Журнал движка: в подвале последняя строка, по клику — последние десять.
 const logLines: string[] = []
 const showLog = () => {
-  const last = logLines[logLines.length - 1] ?? ''
-  $('logline').textContent = last
+  $('logline').textContent = logLines[logLines.length - 1] ?? ''
   $('log').innerHTML = logLines.slice(-10).reverse().map((l) => `<li>${l.replace(/</g, '&lt;')}</li>`).join('')
 }
 $('logline').addEventListener('click', () => { $('log').hidden = !$('log').hidden })
@@ -110,7 +208,7 @@ listen<string>('log', ({ payload }) => {
 let pending: PadState | null = null
 listen<PadState>('state', (e) => {
   if (!pending) requestAnimationFrame(() => {
-    if (pending) { pad.draw(pending); sheet.draw(pending); drawTop(pending) }
+    if (pending) { drawPad(pending); drawTop(pending) }
     pending = null
   })
   pending = e.payload
