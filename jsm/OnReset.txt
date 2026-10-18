@@ -1,0 +1,2 @@
+# PS: tap toggles gyro calibration, hold calibrates while held.
+HOME = CALIBRATE CALIBRATE

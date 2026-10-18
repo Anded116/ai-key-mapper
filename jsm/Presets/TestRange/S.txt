@@ -1,0 +1,4 @@
+ZR,W = 1\ "Presets/TestRange/W.txt"\
+ZR,S = 4\ "Presets/TestRange/Neutral.txt"\
+ZR,E = 5\ "Presets/TestRange/E.txt"\
+ZR,N = 7\ "Presets/TestRange/N.txt"\

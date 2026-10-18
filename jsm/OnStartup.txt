@@ -1,0 +1,5 @@
+# JSM_DIRECTORY for TestRange. Launched by "TestRange + JSM.cmd".
+# Calibrate the gyro at startup: keep the controller still on the table for 3 seconds.
+RESTART_GYRO_CALIBRATION
+SLEEP 3
+FINISH_GYRO_CALIBRATION
