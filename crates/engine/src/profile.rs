@@ -389,9 +389,9 @@ struct RawLightbar {
 
 impl Default for RawLightbar {
     fn default() -> Self {
-        // PlayStation button colours, as in the JSM preset.
+        // Off by default; when on, PlayStation button colours as in the old JSM preset.
         Self {
-            enabled: true,
+            enabled: false,
             idle: "303030".into(),
             square: "FF3CA0".into(),
             cross: "3C64FF".into(),

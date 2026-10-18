@@ -1,7 +1,8 @@
-﻿# Builds and starts TestRange, optionally with a mapper next to it.
+﻿# Builds and starts TestRange and/or a mapper.
 #   launch.ps1          TestRange only
-#   launch.ps1 jsm      JoyShockMapper v3.6.1 with the preset from jsm\
-#   launch.ps1 aikm     our engine with profiles\testrange.toml
+#   launch.ps1 jsm      TestRange + JoyShockMapper v3.6.1 with the preset from jsm\
+#   launch.ps1 aikm     TestRange + our engine with profiles\testrange.toml
+#   launch.ps1 auto     our engine only, picking the profile by the game in focus
 param([string]$Mode = "")
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -14,20 +15,41 @@ function Stop-WithMessage([string]$Message) {
     exit 1
 }
 
+$withGame = $Mode -ne "auto"
+$withAikm = $Mode -in @("aikm", "auto")
+
 # Running copies lock their .exe files: the build would fail and the old version would stay.
-$running = Get-Process testrange, aikm -ErrorAction SilentlyContinue
+$locked = @()
+if ($withGame) { $locked += "testrange" }
+if ($withAikm) { $locked += "aikm" }
+$running = Get-Process $locked -ErrorAction SilentlyContinue
 if ($running) {
     $names = ($running | ForEach-Object { "$($_.ProcessName).exe" } | Sort-Object -Unique) -join ", "
-    Stop-WithMessage "Уже запущено: $names. Закрой TestRange и окно aikm, потом запусти снова."
+    Stop-WithMessage "Уже запущено: $names. Закрой его, потом запусти снова."
+}
+if ($withAikm -and (Get-Process JoyShockMapper -ErrorAction SilentlyContinue)) {
+    Stop-WithMessage "Запущен JoyShockMapper. Закрой его: два маппера сразу задвоят ввод."
 }
 
 if (Get-Command cargo -ErrorAction SilentlyContinue) {
-    Write-Host "Сборка TestRange и движка..."
-    cargo build --release -p testrange -p engine -p hidhide-cli
+    $packages = @()
+    if ($withGame) { $packages += "-p", "testrange" }
+    if ($withAikm) { $packages += "-p", "engine", "-p", "hidhide-cli" }
+    Write-Host "Сборка..."
+    cargo build --release @packages
     if ($LASTEXITCODE -ne 0) { Stop-WithMessage "Сборка не удалась." }
 }
 $game = Join-Path $root "target\release\testrange.exe"
-if (-not (Test-Path $game)) { Stop-WithMessage "Нет $game и нет Rust для сборки: https://rustup.rs" }
+$aikm = Join-Path $root "target\release\aikm.exe"
+if ($withGame -and -not (Test-Path $game)) { Stop-WithMessage "Нет $game и нет Rust для сборки: https://rustup.rs" }
+if ($withAikm -and -not (Test-Path $aikm)) { Stop-WithMessage "Нет $aikm и нет Rust для сборки: https://rustup.rs" }
+
+function Start-Aikm([string]$Target) {
+    Write-Host "Положи геймпад на стол: первая секунда — калибровка гироскопа."
+    # cmd /k keeps the window open, so errors stay readable.
+    Start-Process cmd.exe -ArgumentList "/k `"chcp 65001 >nul & `"$aikm`" run `"$Target`"`""
+    Start-Sleep -Seconds 2
+}
 
 switch ($Mode) {
     "jsm" {
@@ -47,17 +69,10 @@ switch ($Mode) {
         Start-Process $jsm -ArgumentList "`"$(Join-Path $root 'jsm')`"" -WorkingDirectory $jsmHome
         Start-Sleep -Seconds 4
     }
-    "aikm" {
-        if (Get-Process JoyShockMapper -ErrorAction SilentlyContinue) {
-            Stop-WithMessage "Запущен JoyShockMapper. Закрой его: два маппера сразу задвоят ввод."
-        }
-        $aikm = Join-Path $root "target\release\aikm.exe"
-        $profilePath = Join-Path $root "profiles\testrange.toml"
-        Write-Host "Положи геймпад на стол: первая секунда — калибровка гироскопа."
-        # cmd /k keeps the window open, so errors stay readable.
-        Start-Process cmd.exe -ArgumentList "/k `"chcp 65001 >nul & `"$aikm`" run `"$profilePath`"`""
-        Start-Sleep -Seconds 2
-    }
+    "aikm" { Start-Aikm (Join-Path $root "profiles\testrange.toml") }
+    "auto" { Start-Aikm (Join-Path $root "profiles") }
 }
 
-Start-Process $game -WorkingDirectory (Join-Path $root "demo")
+if ($withGame) {
+    Start-Process $game -WorkingDirectory (Join-Path $root "demo")
+}

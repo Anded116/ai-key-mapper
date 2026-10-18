@@ -11,11 +11,23 @@ const FONT_CANDIDATES: [&str; 3] = [
     "C:/Windows/Fonts/arial.ttf",
 ];
 
+/// Glyphs are rasterised the first time a character shows at a size; opening the pause menu or
+/// the stats table then stalled for about a second. Rasterise everything the HUD prints up front.
+fn warm_up(font: &Font) {
+    let mut chars: Vec<char> = (' '..='~').collect();
+    chars.extend('А'..='я');
+    chars.extend("Ёё°·—–←→↑↓×…│✕○□△•−≥≤∞«»∠±".chars());
+    for size in 12..=30 {
+        font.populate_font_cache(&chars, size);
+    }
+}
+
 impl Txt {
     pub async fn load() -> Self {
         for path in FONT_CANDIDATES {
             if let Ok(mut font) = load_ttf_font(path).await {
                 font.set_filter(FilterMode::Linear);
+                warm_up(&font);
                 return Self { font: Some(font) };
             }
         }

@@ -152,6 +152,9 @@ pub struct Game {
     /// Weapon lag behind fast turns, radians (yaw, pitch).
     pub sway: Vec2,
     pub sprint_k: f32,
+    /// Weapon bob: the phase accumulates, so a speed change never makes it jump.
+    pub bob_phase: f32,
+    pub bob_amp: f32,
     pub switched_at: f64,
     pub force_ads: bool,
     viewmodel_rt: Option<RenderTarget>,
@@ -340,6 +343,10 @@ impl Game {
         let sprinting = self.p.stance == Stance::Sprint && self.p.horizontal_speed() > 4.0;
         let target = if sprinting { 1.0 } else { 0.0 };
         self.sprint_k += (target - self.sprint_k) * (dt * 8.0).min(1.0);
+        let speed = self.p.horizontal_speed();
+        self.bob_phase = (self.bob_phase + dt * (4.0 + speed * 1.3)) % std::f32::consts::TAU;
+        let amp = if self.p.on_ground && speed > 0.3 { (speed / 5.0).min(1.5) } else { 0.0 };
+        self.bob_amp += (amp - self.bob_amp) * (dt * 6.0).min(1.0);
 
         self.weapons_input(now);
         self.misc_input(now);
@@ -604,6 +611,8 @@ async fn main() {
         vfov: 1.0,
         sway: Vec2::ZERO,
         sprint_k: 0.0,
+        bob_phase: 0.0,
+        bob_amp: 0.0,
         switched_at: -10.0,
         force_ads: false,
         viewmodel_rt: None,

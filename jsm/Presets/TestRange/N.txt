@@ -1,4 +1,3 @@
-LIGHT_BAR = x28FF8C
 ZR,W = 1\ "Presets/TestRange/W.txt"\
 ZR,S = 3\ "Presets/TestRange/S.txt"\
 ZR,E = 5\ "Presets/TestRange/E.txt"\

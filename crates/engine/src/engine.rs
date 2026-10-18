@@ -163,6 +163,12 @@ impl Engine {
         self.movement_override.unwrap_or(self.profile.movement.mode)
     }
 
+    /// The controller should be hidden from games: the profile asks for it and the left stick is
+    /// mapped to WASD. In hybrid mode the game has to read the stick, so it must see the pad.
+    pub fn wants_hidden(&self) -> bool {
+        self.profile.hide_controller && self.movement_mode() == MoveMode::Wasd
+    }
+
     fn next_pair(&self) -> Option<Btn> {
         self.profile.layers.iter().find_map(|l| self.buttons.next_pair(Some(l.button)))
     }
@@ -231,6 +237,13 @@ impl Engine {
     /// Result of the last finished gyro calibration, once.
     pub fn take_calibration(&mut self) -> Option<CalibrationResult> {
         self.gyro.take_result()
+    }
+
+    /// The game is not in focus: nothing is sent, only gyro calibration keeps collecting, so the
+    /// startup calibration happens while the pad lies still after launch, not on first focus.
+    pub fn idle(&mut self, now: f64, s: &State) {
+        let dt = self.dt(now, s.timestamp_us);
+        self.gyro.update(now, dt, s.gyro, &self.profile.gyro, false);
     }
 
     /// Time without a new report: only timers run (tap releases, holds, pending taps).
@@ -464,7 +477,9 @@ mod tests {
 
     #[test]
     fn lightbar_shows_the_pending_pair() {
-        let p = Profile::parse("[weapons]\nslots = 8\nkeys = [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\"]").unwrap();
+        assert_eq!(Engine::new(Profile::parse("").unwrap()).lightbar(), None, "off unless the profile asks");
+        let p = Profile::parse("[lightbar]\nenabled = true\n[weapons]\nslots = 8\nkeys = [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\"]")
+            .unwrap();
         let mut e = Engine::new(p);
         let mut sink = RecordSink::default();
         assert_eq!(e.lightbar(), Some([0x30, 0x30, 0x30]));

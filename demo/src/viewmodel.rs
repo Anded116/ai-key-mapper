@@ -238,12 +238,10 @@ impl Game {
         let mut pos = HIP.lerp(ads_pos, ads);
         let (mut yaw, mut pitch, mut roll) = (0.0f32, 0.0f32, 0.0f32);
 
-        let speed = self.p.horizontal_speed();
-        if self.p.on_ground && speed > 0.3 {
-            let t = now as f32 * (4.0 + speed * 1.3);
-            let amp = (speed / 5.0).min(1.5) * (1.0 - ads * 0.85);
-            pos.x += t.sin() * 0.012 * amp;
-            pos.y -= t.cos().abs() * 0.012 * amp;
+        if self.bob_amp > 0.0 {
+            let amp = self.bob_amp * (1.0 - ads * 0.85);
+            pos.x += self.bob_phase.sin() * 0.012 * amp;
+            pos.y -= self.bob_phase.cos().abs() * 0.012 * amp;
         }
         if !self.p.on_ground {
             pos.y -= 0.015;

@@ -44,8 +44,7 @@ T2,CAPTURE = F2                 # Debug HUD
 
 MIC = F8                        # Reset TestRange counters
 
-##### R2 + face button: first press = odd slot, second press = even slot.
-##### The light bar shows which button's second weapon comes next.
+##### R2 + face button: first press = odd slot, pressing it again = even slot
 Presets/TestRange/Neutral.txt
 
 Presets/aim.txt

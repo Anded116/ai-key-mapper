@@ -268,6 +268,9 @@ fn run(path: &Path, dry: bool) {
     let mut paused = false;
     let mut combo_was = false;
     let mut lightbar: Option<[u8; 3]> = None;
+    let mut fg_exe: Option<String> = None;
+    let mut focused = false;
+    let mut waiting_pad = false;
     eprintln!("{}", if dry { "сухой прогон: в систему ничего не уходит" } else { "вывод в систему" });
     eprintln!("PS + Create — пауза, Ctrl+C — выход. Держи геймпад неподвижно секунду: калибровка гироскопа.");
 
@@ -279,14 +282,13 @@ fn run(path: &Path, dry: bool) {
     while !STOP.load(Ordering::SeqCst) {
         let now = start.elapsed().as_secs_f64();
 
-        if let Source::Auto { index, last_exe, .. } = &mut source {
-            if last_focus.elapsed() >= Duration::from_millis(300) {
-                last_focus = Instant::now();
-                let exe = foreground_exe();
-                if exe != *last_exe {
-                    *last_exe = exe.clone();
-                    // Like JSM: a window without a profile keeps the current one.
-                    let hit = exe.and_then(|x| pick_profile(index, &x));
+        if last_focus.elapsed() >= Duration::from_millis(300) {
+            last_focus = Instant::now();
+            fg_exe = foreground_exe();
+            if let Source::Auto { index, last_exe, .. } = &mut source {
+                if fg_exe != *last_exe {
+                    *last_exe = fg_exe.clone();
+                    let hit = fg_exe.as_deref().and_then(|x| pick_profile(index, x));
                     if let Some(p) = hit.filter(|p| active.as_ref() != Some(p)) {
                         match Profile::load(&p) {
                             Ok(profile) => {
@@ -304,7 +306,21 @@ fn run(path: &Path, dry: bool) {
             }
         }
 
-        let wants_hide = !dry && engine.as_ref().is_some_and(|e| e.profile.hide_controller);
+        // A profile only acts while its game is in focus: no gyro mouse on the desktop.
+        let in_game = engine.as_ref().is_some_and(|e| {
+            e.profile.exe.as_ref().is_none_or(|exe| fg_exe.as_deref() == Some(exe.to_lowercase().as_str()))
+        });
+        if in_game != focused {
+            focused = in_game;
+            if let Some(e) = &mut engine {
+                if !focused {
+                    e.release_all(&mut out);
+                }
+                eprintln!("\n{}", if focused { "игра в фокусе — работаю" } else { "игра не в фокусе — движок молчит" });
+            }
+        }
+
+        let wants_hide = !dry && engine.as_ref().is_some_and(|e| e.wants_hidden());
         if wants_hide && hider.is_none() {
             hider = Hider::start();
         } else if !wants_hide {
@@ -317,6 +333,7 @@ fn run(path: &Path, dry: bool) {
             let _ = api.refresh_devices();
             match Pad::open_first(&api) {
                 Ok(mut p) => {
+                    waiting_pad = false;
                     eprintln!("\n{} · {:?}", p.model.name(), p.bus);
                     if let Err(e) = p.disable_trigger_effects() {
                         eprintln!("адаптивные триггеры не сброшены: {e}");
@@ -325,6 +342,10 @@ fn run(path: &Path, dry: bool) {
                     pad = Some(p);
                 }
                 Err(_) => {
+                    if !waiting_pad {
+                        waiting_pad = true;
+                        eprintln!("геймпад не найден: не подключён или скрыт HidHide от этой копии aikm. Жду…");
+                    }
                     std::thread::sleep(Duration::from_millis(500));
                     continue;
                 }
@@ -340,11 +361,13 @@ fn run(path: &Path, dry: bool) {
                     eprintln!("\n{}", if paused { "пауза" } else { "работаю" });
                 }
                 combo_was = combo;
-                if !paused {
+                if !focused {
+                    e.idle(now, &state);
+                } else if !paused {
                     e.update(now, &state, &mut out);
                 }
             }
-            (Some(Ok(None)), Some(e)) => e.tick(now, &mut out),
+            (Some(Ok(None)), Some(e)) if focused => e.tick(now, &mut out),
             (Some(Err(err)), _) => {
                 eprintln!("\nгеймпад отключён: {err}");
                 if let Some(e) = &mut engine {
@@ -406,8 +429,9 @@ fn run(path: &Path, dry: bool) {
                     let s = e.snapshot();
                     let outs: Vec<_> = s.outputs.iter().map(|o| o.name()).collect();
                     format!(
-                        "{} │ слой {:<4} │ пара {:<8} │ движение {:?} │ гироскоп {} │ флик {} │ держу: {}",
+                        "{}{} │ слой {:<4} │ пара {:<8} │ движение {:?} │ гироскоп {} │ флик {} │ держу: {}",
                         e.profile.game,
+                        if focused { "" } else { " (не в фокусе)" },
                         s.layer.map_or("—", |b| b.name()),
                         s.next_pair.map_or("—", |b| b.name()),
                         s.movement,
