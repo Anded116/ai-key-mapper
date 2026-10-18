@@ -4,7 +4,7 @@ use dualsense::{Buttons as PadButtons, State};
 
 use crate::buttons::Buttons;
 use crate::flick::{apply_deadzone, Flick};
-use crate::gyro::Gyro;
+use crate::gyro::{CalibrationResult, Gyro, TRIM_S};
 use crate::keys::Output;
 use crate::output::{Held, Sink};
 use crate::profile::{Btn, MoveMode, Profile};
@@ -32,6 +32,8 @@ const PAD_BITS: [(PadButtons, Btn); 17] = [
 
 /// Half of the touchpad width in touch units (DualSense and DS4 are both 1920 wide).
 const PAD_HALF_X: u16 = 960;
+/// A calibrate press shorter than this toggles calibration instead of holding it.
+const CAL_TAP_S: f64 = 0.3;
 
 /// What the UI shows about the engine.
 #[derive(Clone, Debug, Default)]
@@ -59,6 +61,9 @@ pub struct Engine {
     frac: (f32, f32),
     last_now: Option<f64>,
     last_ts: Option<u32>,
+    cal_press: Option<f64>,
+    cal_toggle: bool,
+    cal_ending_press: bool,
 }
 
 impl Engine {
@@ -76,6 +81,9 @@ impl Engine {
             frac: (0.0, 0.0),
             last_now: None,
             last_ts: None,
+            cal_press: None,
+            cal_toggle: false,
+            cal_ending_press: false,
         }
     }
 
@@ -125,6 +133,37 @@ impl Engine {
         set
     }
 
+    /// Calibration button as in JSM: a tap starts calibrating and the next tap finishes it;
+    /// a hold calibrates while held. Either way the jolts of pressing and releasing are trimmed.
+    fn calibrate_pressed(&mut self, now: f64) {
+        if self.gyro.calibrating() && self.cal_toggle {
+            self.gyro.end_calibration(now, TRIM_S, TRIM_S);
+            self.cal_toggle = false;
+            self.cal_ending_press = true;
+        } else {
+            self.gyro.begin_calibration(now);
+            self.cal_press = Some(now);
+        }
+    }
+
+    fn calibrate_released(&mut self, now: f64) {
+        if std::mem::take(&mut self.cal_ending_press) {
+            return;
+        }
+        if let Some(t) = self.cal_press.take() {
+            if now - t < CAL_TAP_S {
+                self.cal_toggle = true;
+            } else {
+                self.gyro.end_calibration(now, TRIM_S, TRIM_S);
+            }
+        }
+    }
+
+    /// Result of the last finished gyro calibration, once.
+    pub fn take_calibration(&mut self) -> Option<CalibrationResult> {
+        self.gyro.take_result()
+    }
+
     /// Time without a new report: only timers run (tap releases, holds, pending taps).
     pub fn tick(&mut self, now: f64, sink: &mut dyn Sink) {
         self.buttons.tick(now, &self.profile, &mut self.held, sink);
@@ -143,13 +182,13 @@ impl Engine {
         for b in released {
             self.buttons.release(b, now, &self.profile, &mut self.held, sink);
             if Some(b) == calibrate {
-                self.gyro.end_calibration();
+                self.calibrate_released(now);
             }
         }
         for b in pressed {
             self.buttons.press(b, now, &self.profile, &mut self.held, sink);
             if Some(b) == calibrate {
-                self.gyro.begin_calibration();
+                self.calibrate_pressed(now);
             }
         }
         self.pressed = current;
@@ -284,6 +323,42 @@ mod tests {
         let expected = 90.0 * 45.4545;
         assert!((sink.moved.0 as f32 - expected).abs() < 5.0, "{:?}", sink.moved);
         assert_eq!(sink.moved.1, 0);
+    }
+
+    fn feed(e: &mut Engine, sink: &mut RecordSink, from: f64, to: f64, buttons: PadButtons, gyro: [f32; 3]) {
+        let mut t = from;
+        while t < to {
+            let mut s = state(buttons, (t * 1_000_000.0) as u32);
+            s.gyro = gyro;
+            e.update(t, &s, sink);
+            t += 0.002;
+        }
+    }
+
+    #[test]
+    fn calibrate_tap_toggles_and_hold_holds() {
+        let p = Profile::parse("[gyro]\nstartup_calibration = 0.0").unwrap();
+        let mut e = Engine::new(p);
+        let mut sink = RecordSink::default();
+        let bias = [0.3, -0.5, 0.1];
+        // Tap PS: calibration keeps running after the release.
+        feed(&mut e, &mut sink, 0.0, 0.1, PadButtons::PS, bias);
+        feed(&mut e, &mut sink, 0.1, 2.0, PadButtons::NONE, bias);
+        assert!(e.snapshot().gyro_calibrating);
+        // Second tap finishes it.
+        feed(&mut e, &mut sink, 2.0, 2.1, PadButtons::PS, bias);
+        assert!(!e.snapshot().gyro_calibrating);
+        feed(&mut e, &mut sink, 2.1, 2.2, PadButtons::NONE, bias);
+        assert!(!e.snapshot().gyro_calibrating, "the finishing tap's release starts nothing");
+        let r = e.take_calibration().unwrap();
+        let b = r.bias.unwrap();
+        assert!((b[0] - 0.3).abs() < 1e-4 && (b[1] + 0.5).abs() < 1e-4, "{b:?}");
+        // Hold PS for two seconds: calibrates until release.
+        feed(&mut e, &mut sink, 3.0, 5.0, PadButtons::PS, [0.0, 0.2, 0.0]);
+        assert!(e.snapshot().gyro_calibrating);
+        feed(&mut e, &mut sink, 5.0, 5.1, PadButtons::NONE, [0.0, 0.2, 0.0]);
+        assert!(!e.snapshot().gyro_calibrating);
+        assert!((e.snapshot().gyro_bias[1] - 0.2).abs() < 1e-4);
     }
 
     #[test]

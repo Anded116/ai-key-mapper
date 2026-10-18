@@ -5,6 +5,7 @@
 //! aikm-probe --seconds 5          stop after 5 seconds
 //! aikm-probe --still 3            keep the pad still: measures gyro bias and noise
 //! aikm-probe --lightbar ff3ca0    set the light bar colour
+//! aikm-probe --triggers-off       turn adaptive trigger resistance off
 
 use std::io::Write;
 use std::time::{Duration, Instant};
@@ -17,15 +18,17 @@ struct Args {
     seconds: Option<f64>,
     still: Option<f64>,
     lightbar: Option<[u8; 3]>,
+    triggers_off: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut a = Args { json: false, seconds: None, still: None, lightbar: None };
+    let mut a = Args { json: false, seconds: None, still: None, lightbar: None, triggers_off: false };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match arg.as_str() {
             "--json" => a.json = true,
+            "--triggers-off" => a.triggers_off = true,
             "--seconds" => a.seconds = Some(value("--seconds")?.parse().map_err(|_| "bad --seconds")?),
             "--still" => a.still = Some(value("--still")?.parse().map_err(|_| "bad --still")?),
             "--lightbar" => {
@@ -51,6 +54,10 @@ fn main() {
     let mut pad = Pad::open_first(&api).unwrap_or_else(|e| fail(&e.to_string()));
     let calib = if pad.factory_calibration { "заводская" } else { "номинальная" };
     eprintln!("{} · {:?} · калибровка IMU: {calib}", pad.model.name(), pad.bus);
+    if args.triggers_off {
+        pad.disable_trigger_effects().unwrap_or_else(|e| fail(&e.to_string()));
+        eprintln!("адаптивные триггеры выключены");
+    }
     if let Some(rgb) = args.lightbar {
         pad.set_lightbar(rgb).unwrap_or_else(|e| fail(&e.to_string()));
     }

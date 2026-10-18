@@ -194,8 +194,11 @@ fn run(path: &Path, dry: bool) {
         if pad.is_none() {
             let _ = api.refresh_devices();
             match Pad::open_first(&api) {
-                Ok(p) => {
+                Ok(mut p) => {
                     eprintln!("\n{} · {:?}", p.model.name(), p.bus);
+                    if let Err(e) = p.disable_trigger_effects() {
+                        eprintln!("адаптивные триггеры не сброшены: {e}");
+                    }
                     pad = Some(p);
                 }
                 Err(_) => {
@@ -243,6 +246,12 @@ fn run(path: &Path, dry: bool) {
                     }
                     Err(e) => eprintln!("\nпрофиль не перечитан: {e}"),
                 }
+            }
+        }
+        if let Some(r) = engine.take_calibration() {
+            match r.bias {
+                Some(b) => eprintln!("\nгироскоп откалиброван: смещение {:+.3} {:+.3} {:+.3} °/с по {} отсчётам", b[0], b[1], b[2], r.samples),
+                None => eprintln!("\nкалибровка не принята: мало неподвижных отсчётов ({}), смещение прежнее", r.samples),
             }
         }
         if last_status.elapsed() >= Duration::from_millis(100) {

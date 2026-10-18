@@ -307,13 +307,32 @@ impl Pad {
 
     /// Sets the light bar colour (DualSense only for now).
     pub fn set_lightbar(&mut self, rgb: [u8; 3]) -> Result<(), Error> {
+        // valid_flag1 bit 2 enables light bar control, colour at 44..47.
+        self.send_output(|c| {
+            c[1] = 0x04;
+            c[44..47].copy_from_slice(&rgb);
+        })
+    }
+
+    /// Turns adaptive trigger resistance off on both triggers. Effects set by another program
+    /// (JoyShockMapper, a game) stay in the controller until something resets them.
+    pub fn disable_trigger_effects(&mut self) -> Result<(), Error> {
+        // valid_flag0 bits 2 and 3 enable the right and left trigger effect; effect mode 0x05 is
+        // "off" (Nielk1's trigger effect generator, used by JSM), parameters zero.
+        self.send_output(|c| {
+            c[0] = 0x04 | 0x08;
+            c[10] = 0x05;
+            c[21] = 0x05;
+        })
+    }
+
+    /// DualSense output report around the 47-byte common body that `fill` writes.
+    fn send_output(&mut self, fill: impl FnOnce(&mut [u8; 47])) -> Result<(), Error> {
         if self.model == Model::DualShock4 {
             return Ok(());
         }
-        // Common output body: valid_flag1 bit 2 enables light bar control, colour at 44..47.
         let mut common = [0u8; 47];
-        common[1] = 0x04;
-        common[44..47].copy_from_slice(&rgb);
+        fill(&mut common);
         match self.bus {
             Bus::Usb => {
                 let mut r = [0u8; 48];

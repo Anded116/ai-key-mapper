@@ -2,10 +2,25 @@
 
 use crate::profile::GyroCfg;
 
-#[derive(Default)]
+/// Seconds dropped after the calibration starts and before it ends: pressing and releasing a
+/// button jolts the controller.
+pub const TRIM_S: f64 = 0.3;
+/// Samples further than this (deg/s) from the median are motion, not bias.
+const OUTLIER_DPS: f32 = 1.5;
+const MIN_SAMPLES: usize = 50;
+const MAX_SAMPLES: usize = 50_000;
+
 struct Accum {
-    sum: [f64; 3],
-    n: u32,
+    started: f64,
+    samples: Vec<(f64, [f32; 3])>,
+}
+
+/// Outcome of the last finished calibration, for the UI.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CalibrationResult {
+    /// New bias, or `None` when there were too few still samples and the old bias stays.
+    pub bias: Option<[f32; 3]>,
+    pub samples: usize,
 }
 
 #[derive(Default)]
@@ -14,6 +29,7 @@ pub struct Gyro {
     accum: Option<Accum>,
     started: bool,
     startup_until: Option<f64>,
+    last: Option<CalibrationResult>,
 }
 
 impl Gyro {
@@ -25,19 +41,39 @@ impl Gyro {
         self.accum.is_some()
     }
 
-    pub fn begin_calibration(&mut self) {
-        self.accum = Some(Accum::default());
+    /// Result of the last calibration, once.
+    pub fn take_result(&mut self) -> Option<CalibrationResult> {
+        self.last.take()
     }
 
-    /// Applies the mean collected since `begin_calibration`.
-    pub fn end_calibration(&mut self) {
-        if let Some(a) = self.accum.take() {
-            if a.n > 0 {
-                for i in 0..3 {
-                    self.bias[i] = (a.sum[i] / a.n as f64) as f32;
-                }
+    pub fn begin_calibration(&mut self, now: f64) {
+        self.accum = Some(Accum { started: now, samples: Vec::new() });
+    }
+
+    /// Bias = mean of the still samples between `started + trim_start` and `now - trim_end`.
+    pub fn end_calibration(&mut self, now: f64, trim_start: f64, trim_end: f64) {
+        let Some(a) = self.accum.take() else { return };
+        let (from, to) = (a.started + trim_start, now - trim_end);
+        let kept: Vec<[f32; 3]> = a.samples.iter().filter(|(t, _)| *t >= from && *t <= to).map(|(_, r)| *r).collect();
+        let mut bias = [0.0f32; 3];
+        let mut used = usize::MAX;
+        for axis in 0..3 {
+            let mut v: Vec<f32> = kept.iter().map(|r| r[axis]).collect();
+            if v.len() < MIN_SAMPLES {
+                used = 0;
+                break;
             }
+            v.sort_by(|a, b| a.total_cmp(b));
+            let median = v[v.len() / 2];
+            let near: Vec<f32> = v.into_iter().filter(|x| (x - median).abs() <= OUTLIER_DPS).collect();
+            used = used.min(near.len());
+            bias[axis] = near.iter().sum::<f32>() / near.len() as f32;
         }
+        let ok = used >= MIN_SAMPLES;
+        if ok {
+            self.bias = bias;
+        }
+        self.last = Some(CalibrationResult { bias: ok.then_some(bias), samples: used });
     }
 
     /// Camera turn in degrees for this sample: (right, down). `rates` are deg/s (pitch, yaw, roll).
@@ -46,18 +82,17 @@ impl Gyro {
             self.started = true;
             if cfg.startup_calibration > 0.0 {
                 self.startup_until = Some(now + cfg.startup_calibration as f64);
-                self.begin_calibration();
+                self.begin_calibration(now);
             }
         }
         if let Some(a) = &mut self.accum {
-            for (sum, rate) in a.sum.iter_mut().zip(rates) {
-                *sum += rate as f64;
+            if a.samples.len() < MAX_SAMPLES {
+                a.samples.push((now, rates));
             }
-            a.n += 1;
-            // Startup calibration ends by itself; a button-held one ends on release.
+            // Startup calibration ends by itself; a button one ends from the engine.
             if self.startup_until.is_some_and(|t| now >= t) {
                 self.startup_until = None;
-                self.end_calibration();
+                self.end_calibration(now, 0.2, 0.0);
             }
             return (0.0, 0.0);
         }
@@ -107,13 +142,50 @@ mod tests {
         let c = cfg();
         let mut g = Gyro::default();
         let mut t = 0.0;
-        while t < 0.6 {
+        while t < 0.499 {
             assert_eq!(g.update(t, 0.002, [0.5, -0.4, 0.0], &c, true), (0.0, 0.0));
             t += 0.002;
         }
+        g.update(t + 0.002, 0.002, [0.5, -0.4, 0.0], &c, true);
+        t += 0.004;
         assert!(!g.calibrating());
         let (x, y) = g.update(t, 0.002, [0.5, -0.4, 0.0], &c, true);
         assert!(x.abs() < 1e-4 && y.abs() < 1e-4, "bias removed: {x} {y}");
+    }
+
+    #[test]
+    fn button_jolts_and_spikes_do_not_reach_the_bias() {
+        let mut c = cfg();
+        c.startup_calibration = 0.0;
+        let mut g = Gyro::default();
+        g.begin_calibration(0.0);
+        let mut t = 0.0;
+        while t < 2.0 {
+            // True bias 0.4 deg/s; the press (first 0.1 s) and release (last 0.1 s) shake the pad.
+            let jolt = if !(0.1..=1.9).contains(&t) { 40.0 } else { 0.0 };
+            let spike = if (1.0..1.01).contains(&t) { 25.0 } else { 0.0 };
+            g.update(t, 0.002, [0.4 + jolt + spike, -0.2 - jolt, 0.0], &c, true);
+            t += 0.002;
+        }
+        g.end_calibration(t, TRIM_S, TRIM_S);
+        let b = g.bias();
+        assert!((b[0] - 0.4).abs() < 0.01 && (b[1] + 0.2).abs() < 0.01, "{b:?}");
+        let r = g.take_result().unwrap();
+        assert!(r.bias.is_some() && r.samples > 500);
+    }
+
+    #[test]
+    fn too_short_calibration_keeps_the_old_bias() {
+        let mut c = cfg();
+        c.startup_calibration = 0.0;
+        let mut g = Gyro::default();
+        g.begin_calibration(0.0);
+        for i in 0..100 {
+            g.update(i as f64 * 0.002, 0.002, [5.0, 5.0, 5.0], &c, true);
+        }
+        g.end_calibration(0.2, TRIM_S, TRIM_S);
+        assert_eq!(g.bias(), [0.0; 3]);
+        assert_eq!(g.take_result().unwrap().bias, None);
     }
 
     #[test]

@@ -1,2 +1,4 @@
 # PS: tap toggles gyro calibration, hold calibrates while held.
 HOME = CALIBRATE CALIBRATE
+# No trigger resistance: the DualSense keeps an effect until something resets it.
+ADAPTIVE_TRIGGER = OFF
