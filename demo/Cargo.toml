@@ -7,3 +7,4 @@ description = "3D shooter test range for debugging controller-to-keyboard/mouse 
 [dependencies]
 macroquad = "0.4.16"
 gilrs = "0.11.2"
+hidapi = "2.6.7"

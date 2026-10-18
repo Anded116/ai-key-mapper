@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ds;
 mod hud;
 mod input;
 mod pad;

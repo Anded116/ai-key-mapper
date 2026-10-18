@@ -56,11 +56,6 @@ fn draw_glyph(g: Glyph, x: f32, y: f32, r: f32, c: Color) {
     }
 }
 
-/// Compass angle of a 2D move vector: 0° = forward, positive = right.
-fn angle_deg(v: Vec2) -> f32 {
-    v.x.atan2(v.y).to_degrees()
-}
-
 impl Game {
     pub fn draw_hud(&self, now: f64) {
         let (w, h) = (screen_width(), screen_height());
@@ -267,128 +262,68 @@ impl Game {
         }
     }
 
+    /// Compact debug panel: five lines plus a small stick gauge.
     fn draw_debug(&self, now: f64, w: f32) {
         let inp = &self.input;
-        let (x, mut y) = (12.0, 12.0);
-        let pw = 560.0;
-        panel(x, y, pw, 426.0);
-        y += 22.0;
-        let line = |y: &mut f32, s: &str, c: Color| {
-            self.txt.draw(s, x + 12.0, *y, 17.0, c);
-            *y += 21.0;
+        let (x, y, pw, ph) = (12.0, 12.0, 580.0, 112.0);
+        panel(x, y, pw, ph);
+        let size = 15.0;
+        let mut ly = y + 20.0;
+        let mut line = |s: &str, c: Color| {
+            self.txt.draw(s, x + 10.0, ly, size, c);
+            ly += 19.0;
         };
-        line(&mut y, &format!("FPS {:.0}  ({:.2} мс)", self.fps, 1000.0 / self.fps.max(1.0)), DIM);
         let k = YAW_DEG_PER_COUNT * self.s.sens;
-        let yaw = self.p.yaw.to_degrees();
-        line(&mut y, &format!("Мышь: Δ {:+.0} / {:+.0} · {:.0} отсч/с", inp.delta.x, inp.delta.y, inp.counts_per_sec), WHITE);
-        line(&mut y, &format!("Всего: X {:.0} · Y {:.0} отсчётов", inp.counts_total.x, inp.counts_total.y), DIM);
-        line(
-            &mut y,
-            &format!("Yaw {:.1}° (всего {:+.1}°) · Pitch {:+.1}°", yaw.rem_euclid(360.0), yaw, self.p.pitch.to_degrees()),
-            WHITE,
-        );
         let turn = inp.turn_counts * k;
-        let state = if inp.turn_done { "" } else { " …" };
-        line(&mut y, &format!("Последний поворот: {turn:+.1}° = {:+.0} отсч.{state}", inp.turn_counts), GOOD);
-        line(&mut y, "JoyShockMapper для этой игры:", ACCENT);
-        line(&mut y, &format!("  REAL_WORLD_CALIBRATION = {:.4}", 1.0 / YAW_DEG_PER_COUNT), ACCENT);
-        line(&mut y, &format!("  IN_GAME_SENS = {}", self.s.sens), ACCENT);
-        line(&mut y, &format!("  360° = {:.0} отсчётов", 360.0 / k), DIM);
-
-        let held: Vec<String> = inp
-            .down
-            .iter()
-            .map(|(b, t)| format!("{} {:.2}с", btn_name(*b), now - t))
-            .collect();
-        let held = if held.is_empty() { "—".to_string() } else { held.join(", ") };
-        line(&mut y, &format!("Зажато: {held}"), WHITE);
-
-        y += 6.0;
-        let pads = &self.pads;
-        if let Some(e) = &pads.error {
-            line(&mut y, &format!("gilrs: {e}"), WARN);
-        }
-        let n = pads.list.len();
-        let c = if n == 0 { GOOD } else { WARN };
-        line(&mut y, &format!("Геймпадов видит игра: {n}"), c);
-        for p in pads.list.iter().take(2) {
-            let id = match (p.vid, p.pid) {
-                (Some(v), Some(pi)) => format!(" [{v:04X}:{pi:04X}]"),
-                _ => String::new(),
-            };
-            line(&mut y, &format!("  {}{id}", p.name), STICK);
-        }
-        if n == 0 {
-            line(&mut y, "  (скрыт HidHide или не подключён)", DIM);
-        }
-        let mode = match self.s.mixed {
-            MixedInput::Simultaneous => "одновременно",
-            MixedInput::LastDeviceWins => "последнее устройство",
+        line(&format!("FPS {:.0} · мышь {:.0} отсч/с · флик {turn:+.1}°", self.fps, inp.counts_per_sec), DIM);
+        line(
+            &format!("JSM: RWC {:.4} · SENS {} · 360° = {:.0}", 1.0 / YAW_DEG_PER_COUNT, self.s.sens, 360.0 / k),
+            ACCENT,
+        );
+        let (pad, pad_c) = match self.pads.name() {
+            Some(n) => (format!("геймпад: {n}"), STICK),
+            None => ("геймпад: игра не видит (HidHide или не подключён)".to_string(), GOOD),
         };
-        line(&mut y, &format!("Смешанный ввод: {mode}"), DIM);
-        line(&mut y, &format!("Смен устройства за 10 с: {}", self.dev_switches.len()), DIM);
+        line(&pad, pad_c);
+        let dev = if self.pad_active { "геймпад" } else { "клав+мышь" };
+        let mixed = match self.s.mixed {
+            MixedInput::Simultaneous => "вместе",
+            MixedInput::LastDeviceWins => "последнее",
+        };
+        line(&format!("ввод: {dev} · режим {mixed} · смен за 10 с: {}", self.dev_switches.len()), DIM);
+        let held: Vec<String> = inp.down.keys().map(|b| btn_name(*b)).collect();
+        let held = if held.is_empty() { "—".to_string() } else { held.join(" ") };
+        line(&format!("зажато: {held}"), WHITE);
 
-        self.draw_stick_panel(x, 446.0);
+        self.draw_stick_gauge(x + pw - 46.0, y + 56.0, 32.0);
         self.draw_log(now, w);
     }
 
-    fn draw_stick_panel(&self, x: f32, y: f32) {
-        let (pw, ph) = (560.0, 150.0);
-        panel(x, y, pw, ph);
-        let r = 58.0;
-        let (cx, cy) = (x + 16.0 + r, y + ph / 2.0);
+    /// Analog stick (dot) against what the game gets as keys (line).
+    fn draw_stick_gauge(&self, cx: f32, cy: f32, r: f32) {
         draw_circle_lines(cx, cy, r, 1.5, DIM);
-        draw_circle_lines(cx, cy, r * 0.15, 1.0, Color::new(1.0, 1.0, 1.0, 0.25));
-        for i in 0..8 {
-            let a = (i as f32 * 45.0 + 22.5).to_radians();
-            draw_line(cx, cy, cx + a.sin() * r, cy - a.cos() * r, 1.0, Color::new(1.0, 1.0, 1.0, 0.12));
-        }
         let keys = self.keys_vec;
         if keys != Vec2::ZERO {
             draw_line(cx, cy, cx + keys.x * r, cy - keys.y * r, 3.0, ACCENT);
         }
         let stick = self.pads.move_stick();
         if stick != Vec2::ZERO {
-            draw_circle(cx + stick.x * r, cy - stick.y * r, 6.0, STICK);
-        }
-        let tx = cx + r + 18.0;
-        let mut ty = y + 26.0;
-        let mut line = |s: &str, c: Color| {
-            self.txt.draw(s, tx, ty, 17.0, c);
-            ty += 22.0;
-        };
-        line("Левый стик → WASD", WHITE);
-        let fmt = |v: Vec2| {
-            if v == Vec2::ZERO {
-                "—".to_string()
-            } else {
-                format!("{:.2} ∠{:+.0}°", v.length(), angle_deg(v))
-            }
-        };
-        line(&format!("WASD (что получает игра): {}", fmt(keys)), ACCENT);
-        if self.pads.list.is_empty() {
-            line("стик: игра его не видит", DIM);
-        } else {
-            line(&format!("стик (аналог): {}", fmt(stick)), STICK);
-            if keys != Vec2::ZERO && stick != Vec2::ZERO {
-                let da = (angle_deg(keys) - angle_deg(stick) + 540.0).rem_euclid(360.0) - 180.0;
-                let dm = keys.length() - stick.length();
-                line(&format!("ошибка: угол {da:+.0}°, сила {dm:+.2}"), WARN);
-            }
+            draw_circle(cx + stick.x * r, cy - stick.y * r, 5.0, STICK);
         }
     }
 
     fn draw_log(&self, now: f64, w: f32) {
-        let pw = 430.0;
+        let (pw, rows) = (330.0, 12);
         let x = w - pw - 12.0;
-        let lines = self.input.log.len();
-        panel(x, 12.0, pw, 40.0 + lines as f32 * 20.0);
-        self.txt.draw("Лог ввода · tap < 150 мс · hold ≥ 150 мс", x + 12.0, 34.0, 17.0, DIM);
-        for (i, e) in self.input.log.iter().enumerate() {
-            let age = (now - e.t) as f32;
-            let a = (1.0 - age / 12.0).clamp(0.4, 1.0);
+        let n = self.input.log.len().min(rows);
+        if n == 0 {
+            return;
+        }
+        panel(x, 12.0, pw, 12.0 + n as f32 * 18.0);
+        for (i, e) in self.input.log.iter().take(rows).enumerate() {
+            let a = (1.0 - (now - e.t) as f32 / 12.0).clamp(0.35, 1.0);
             let c = Color::new(e.color.r, e.color.g, e.color.b, a);
-            self.txt.draw(&format!("{:7.2}  {}", e.t, e.text), x + 12.0, 58.0 + i as f32 * 20.0, 16.0, c);
+            self.txt.draw(&e.text, x + 10.0, 28.0 + i as f32 * 18.0, 14.0, c);
         }
     }
 
