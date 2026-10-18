@@ -10,6 +10,33 @@ use std::sync::Mutex;
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+/// Всё, что агенту можно без вопросов: окно не умеет отвечать на запросы разрешений, остальное
+/// отклоняется (`dontAsk`). Пишет он только профили, запускает только утилиты проекта.
+const ALLOWED_TOOLS: &[&str] = &[
+    "Read",
+    "Glob",
+    "Grep",
+    "WebSearch",
+    "WebFetch",
+    "Skill",
+    "TodoWrite",
+    "TaskStop",
+    "Edit(profiles/**)",
+    "Bash(target/release/aikm.exe check *)",
+    "Bash(target/release/aikm.exe run * --dry)",
+    "Bash(target/release/aikm-import *)",
+    "Bash(target/release/testrange.exe --screenshot *)",
+    "Bash(cargo build --release *)",
+    "Bash(reg query *)",
+    "Bash(rm profiles/_verify.toml)",
+];
+
+const SYSTEM_NOTE: &str = "Ты агент в окне ai-key-mapper: пользователь пишет из миничата и не видит запросов \
+разрешений. Файлы можно менять только в profiles/. Команды — только из корня репозитория и ровно в таком виде: \
+target/release/aikm.exe check …, target/release/aikm.exe run … --dry, target/release/aikm-import …, \
+target/release/testrange.exe --screenshot …, cargo build --release …, reg query …, rm profiles/_verify.toml. \
+Остальное будет отклонено; если без этого не обойтись — скажи пользователю, что сделать самому.";
+
 #[derive(Default)]
 pub struct Agent {
     session: Mutex<Option<String>>,
@@ -49,6 +76,13 @@ pub fn send_chat(text: String, app: AppHandle, agent: State<'_, Agent>) -> Resul
         args.push("--resume".into());
         args.push(id.clone());
     }
+    // Пользовательские настройки Claude Code разрешают всё подряд — агенту окна они не нужны.
+    args.extend(
+        ["--setting-sources", "project", "--strict-mcp-config", "--permission-mode", "dontAsk"].map(String::from),
+    );
+    args.extend(["--append-system-prompt".to_string(), SYSTEM_NOTE.to_string()]);
+    args.push("--allowedTools".into());
+    args.extend(ALLOWED_TOOLS.iter().map(|t| t.to_string()));
 
     let mut cmd = Command::new("claude");
     cmd.args(&args)

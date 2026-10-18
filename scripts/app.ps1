@@ -23,6 +23,10 @@ if ($running) {
 cargo build --release -p hidhide-cli --manifest-path (Join-Path $root "Cargo.toml")
 if ($LASTEXITCODE -ne 0) { Stop-WithMessage "Сборка aikm-hidhide не удалась." }
 
+# Tools the chat agent runs: aikm check / --dry, aikm-import, testrange --screenshot.
+cargo build --release -p engine -p jsm-import -p testrange --manifest-path (Join-Path $root "Cargo.toml")
+if ($LASTEXITCODE -ne 0) { Write-Host "Утилиты агента не собрались (TestRange открыт?): агент соберёт их сам." -ForegroundColor Yellow }
+
 if (-not (Test-Path "node_modules\.bin\tauri.cmd")) {
     Write-Host "Ставлю npm-зависимости..."
     npm install
